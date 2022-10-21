@@ -1,9 +1,11 @@
+mod c_api;
 mod pk_signature;
 mod pke;
 mod ske;
 use std::string::FromUtf8Error;
 
 use aes_gcm::aead::OsRng;
+pub use c_api::*;
 pub use pk_signature::*;
 pub use pke::*;
 use sha2::{Digest, Sha256};
@@ -11,6 +13,7 @@ pub use ske::*;
 
 use rsa::{RsaPrivateKey, RsaPublicKey};
 use serde::{Deserialize, Serialize};
+use serde_json;
 use thiserror::Error;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -32,56 +35,59 @@ pub enum SommelierDriveCryptoError {
     SignError(#[from] SignError),
     #[error(transparent)]
     Utf8Error(#[from] FromUtf8Error),
+    #[error(transparent)]
+    JsonStringError(#[from] serde_json::Error),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FileCT {
-    shared_key_ct: Vec<u8>,
-    filepath_ct: FilePathCT,
-    shared_key_hash: Vec<u8>,
-    contents_ct: Vec<u8>,
+    pub(crate) shared_key_cts: Vec<Vec<u8>>,
+    pub(crate) filepath_cts: Vec<FilePathCT>,
+    pub(crate) shared_key_hash: Vec<u8>,
+    pub(crate) contents_ct: Vec<u8>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PermissionCT {
-    shared_key_ct: Vec<u8>,
-    filepath_ct: FilePathCT,
+    pub(crate) shared_key_ct: Vec<u8>,
+    pub(crate) filepath_ct: FilePathCT,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RecoveredSharedKey {
-    shared_key: SymmetricKey,
-    shared_key_hash: Vec<u8>,
+    pub(crate) shared_key: SymmetricKey,
+    pub(crate) shared_key_hash: Vec<u8>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FilePathCT {
-    ct: Vec<u8>,
+    pub(crate) ct: Vec<u8>,
 }
 
 pub fn encrypt_new_file(
     pks: &[PkePublicKey],
     filepath: &str,
     contents_bytes: &[u8],
-) -> Result<Vec<FileCT>, SommelierDriveCryptoError> {
+) -> Result<FileCT, SommelierDriveCryptoError> {
     let mut rng = OsRng;
     let shared_key = ske_gen_key(&mut rng);
     let contents_ct = ske_encrypt(&shared_key, [0; 12], contents_bytes)?;
     let shared_key_hash = Sha256::digest(&shared_key.0).to_vec();
 
-    let mut file_cts = Vec::new();
+    let mut shared_key_cts = Vec::new();
+    let mut filepath_cts = Vec::new();
     for pk in pks.into_iter() {
         let shared_key_ct = pke_encrypt(pk, &shared_key.0, &mut rng)?;
         let filepath_ct = encrypt_filepath(pk, filepath)?;
-        let file_ct = FileCT {
-            shared_key_ct,
-            filepath_ct,
-            shared_key_hash: shared_key_hash.clone(),
-            contents_ct: contents_ct.clone(),
-        };
-        file_cts.push(file_ct)
+        shared_key_cts.push(shared_key_ct);
+        filepath_cts.push(filepath_ct);
     }
-    Ok(file_cts)
+    Ok(FileCT {
+        shared_key_cts,
+        filepath_cts,
+        shared_key_hash,
+        contents_ct,
+    })
 }
 
 pub fn recover_shared_key(
@@ -160,10 +166,10 @@ mod test {
 
         let filepath = "/test/filepath_test/test.txt";
         let text = "Hello, World!".as_bytes();
-        let cts = encrypt_new_file(&pks, filepath, text).unwrap();
+        let ct = encrypt_new_file(&pks, filepath, text).unwrap();
 
-        let recovered_shared_key = recover_shared_key(&sks[0], &cts[0].shared_key_ct).unwrap();
-        let contents = decrypt_contents_ct(&recovered_shared_key, &cts[0].contents_ct).unwrap();
+        let recovered_shared_key = recover_shared_key(&sks[0], &ct.shared_key_cts[0]).unwrap();
+        let contents = decrypt_contents_ct(&recovered_shared_key, &ct.contents_ct).unwrap();
         assert_eq!(text, contents);
     }
 
@@ -175,9 +181,9 @@ mod test {
 
         let filepath = "/test/filepath_test/test.txt";
         let text = "Hello, World!".as_bytes();
-        let ct = encrypt_new_file(&vec![pk], filepath, text).unwrap()[0].clone();
+        let ct = encrypt_new_file(&vec![pk], filepath, text).unwrap();
 
-        let recovered_shared_key = recover_shared_key(&sk, &ct.shared_key_ct).unwrap();
+        let recovered_shared_key = recover_shared_key(&sk, &ct.shared_key_cts[0]).unwrap();
 
         let new_sk = pke_gen_secret_key(&mut rng).unwrap();
         let new_pk = pke_gen_public_key(&new_sk);

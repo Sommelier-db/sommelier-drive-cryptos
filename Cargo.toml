@@ -13,7 +13,11 @@ serde = {version = "1.0.103", features = ["derive"]}
 thiserror = "1.0.37"
 sha2 = "0.10.6"
 signature = "1.6.4"
+easy_ffi = {version = "0.1.0", git = "https://github.com/SoraSuegami/easy_ffi.git"}
 
 [dev-dependencies]
 rand = "0.7.0"
 rand_xorshift = "0.2"
+
+[lib]
+crate-type = ["cdylib","staticlib"]
