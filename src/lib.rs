@@ -142,6 +142,8 @@ pub fn decrypt_filepath_ct(
 
 #[cfg(test)]
 mod test {
+    use std::collections::BTreeMap;
+
     use super::*;
 
     #[test]
@@ -198,5 +200,31 @@ mod test {
         let ct = encrypt_filepath(&pk, filepath).unwrap();
         let decrypted_path = decrypt_filepath_ct(&sk, &ct).unwrap();
         assert_eq!(filepath, &decrypted_path);
+    }
+
+    #[test]
+    fn sign_test() {
+        let mut rng = OsRng;
+        let sk = pke_gen_secret_key(&mut rng).unwrap();
+        let pk = pke_gen_public_key(&sk);
+
+        let region_name = "sign_test";
+        let method = "POST";
+        let uri = "/user";
+        let fields = vec!["dataPK", "keywordPK"];
+        let vals = vec!["pkd---", "pkw---"];
+        let mut field_vals = BTreeMap::new();
+        for (field, val) in fields.iter().zip(&vals) {
+            field_vals.insert(field.to_string(), val.to_string());
+        }
+        let signature = gen_signature(&sk, region_name, method, uri, &field_vals, &mut rng);
+
+        let mut field_vals = BTreeMap::new();
+        for (field, val) in fields.iter().zip(&vals).rev() {
+            field_vals.insert(field.to_string(), val.to_string());
+        }
+        let verified =
+            verify_signature(&pk, region_name, method, uri, &field_vals, &signature).unwrap();
+        assert!(verified);
     }
 }

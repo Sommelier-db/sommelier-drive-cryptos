@@ -14,7 +14,7 @@ pub enum SignError {
     SignatureBytesDecodingError,
 }
 
-pub fn sign<R: CryptoRng + RngCore>(
+pub fn gen_signature<R: CryptoRng + RngCore>(
     sk: &PkeSecretKey,
     region_name: &str,
     method: &str,
@@ -28,7 +28,7 @@ pub fn sign<R: CryptoRng + RngCore>(
     signature.as_bytes().to_vec()
 }
 
-pub fn verify(
+pub fn verify_signature(
     pk: &PkePublicKey,
     region_name: &str,
     method: &str,
