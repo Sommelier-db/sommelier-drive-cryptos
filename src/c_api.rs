@@ -2,6 +2,7 @@ use crate::*;
 use core::slice;
 use easy_ffi::easy_ffi;
 use std::collections::BTreeMap;
+use std::ffi::*;
 use std::mem;
 use std::os::raw::c_char;
 use std::os::raw::{c_int, c_uint};
@@ -366,10 +367,10 @@ easy_ffi!(fn_file_ct_pointer =>
 fn_file_ct_pointer!(
     fn encryptNewFile(
         pks: *mut *mut c_char,
-        num_pk: c_int,
+        num_pk: c_uint,
         filepath: *mut c_char,
         contents_bytes: *mut u8,
-        contents_bytes_size: c_int,
+        contents_bytes_size: c_uint,
     ) -> Result<CFileCT, SommelierDriveCryptoError> {
         let pks_slice = unsafe { slice::from_raw_parts_mut(pks, num_pk as usize) };
         let pks: Vec<PkePublicKey> = pks_slice
@@ -483,7 +484,6 @@ fn_str_pointer!(
     }
 );
 
-use std::ffi::*;
 fn str2ptr(str: String) -> *mut c_char {
     let c_str = CString::new(str).unwrap();
     c_str.into_raw()
