@@ -20,13 +20,8 @@ typedef struct CPermissionCT {
   struct CFilePathCT filepath_ct;
 } CPermissionCT;
 
-typedef struct CNonce {
-  const uint8_t *ptr;
-} CNonce;
-
 typedef struct CRecoveredSharedKey {
   char *shared_key;
-  struct CNonce nonce;
   char *shared_key_hash;
 } CRecoveredSharedKey;
 
@@ -53,6 +48,10 @@ struct CFileCT encryptNewFile(char **pks,
                               char *filepath,
                               uint8_t *contents_bytes,
                               unsigned int contents_bytes_size);
+
+char *encryptNewFileWithSharedKey(struct CRecoveredSharedKey recovered_shared_key,
+                                  uint8_t *contents_bytes,
+                                  unsigned int contents_bytes_size);
 
 char *pkeGenPublicKey(char *sk);
 

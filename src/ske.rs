@@ -30,16 +30,17 @@ pub fn ske_encrypt(
     let cipher = Aes128Gcm::new_from_slice(&key.0).map_err(|e| SkeError::InvalidKeyLength(e))?;
     let nonce = Nonce::from_slice(nonce);
     let ct = cipher
-        .encrypt(nonce, plaintext)
+        .encrypt(&nonce, plaintext)
         .map_err(|_| SkeError::EncryptionError)?;
-    Ok(ct)
+    let ct_with_nonce = vec![nonce.to_vec(), ct].concat();
+    Ok(ct_with_nonce)
 }
 
-pub fn ske_decrypt(key: &SymmetricKey, nonce: &[u8; 12], ct: &[u8]) -> Result<Vec<u8>, SkeError> {
+pub fn ske_decrypt(key: &SymmetricKey, ct: &[u8]) -> Result<Vec<u8>, SkeError> {
     let cipher = Aes128Gcm::new_from_slice(&key.0).map_err(|e| SkeError::InvalidKeyLength(e))?;
-    let nonce = Nonce::from_slice(nonce);
+    let nonce = Nonce::from_slice(&ct[0..NONCE_BYTES_SIZE]);
     let plaintext = cipher
-        .decrypt(nonce, ct)
+        .decrypt(&nonce, &ct[NONCE_BYTES_SIZE..])
         .map_err(|_| SkeError::EncryptionError)?;
     Ok(plaintext)
 }

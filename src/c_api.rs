@@ -134,7 +134,6 @@ impl TryInto<PermissionCT> for CPermissionCT {
 #[derive(Debug, Clone)]
 pub struct CRecoveredSharedKey {
     pub shared_key: *mut c_char,
-    pub nonce: CNonce,
     pub shared_key_hash: *mut c_char,
 }
 
@@ -142,7 +141,6 @@ impl Default for CRecoveredSharedKey {
     fn default() -> Self {
         Self {
             shared_key: str2ptr(String::new()),
-            nonce: CNonce::default(),
             shared_key_hash: str2ptr(String::new()),
         }
     }
@@ -152,11 +150,9 @@ impl TryFrom<RecoveredSharedKey> for CRecoveredSharedKey {
     type Error = SommelierDriveCryptoError;
     fn try_from(value: RecoveredSharedKey) -> Result<Self, Self::Error> {
         let shared_key = str2ptr(serde_json::to_string(&value.shared_key)?);
-        let nonce = value.nonce.try_into()?;
         let shared_key_hash = str2ptr(serde_json::to_string(&value.shared_key_hash)?);
         Ok(Self {
             shared_key,
-            nonce,
             shared_key_hash,
         })
     }
@@ -166,11 +162,9 @@ impl TryInto<RecoveredSharedKey> for CRecoveredSharedKey {
     type Error = SommelierDriveCryptoError;
     fn try_into(self) -> Result<RecoveredSharedKey, Self::Error> {
         let shared_key = serde_json::from_str(&ptr2str(self.shared_key))?;
-        let nonce = self.nonce.try_into()?;
         let shared_key_hash = serde_json::from_str(&ptr2str(self.shared_key_hash))?;
         Ok(RecoveredSharedKey {
             shared_key,
-            nonce,
             shared_key_hash,
         })
     }
@@ -205,42 +199,6 @@ impl TryInto<Vec<u8>> for CSharedKeyCT {
         let str = ptr2str(self.ptr);
         let vec = serde_json::from_str::<Vec<u8>>(str)?;
         Ok(vec)
-    }
-}
-
-#[repr(C)]
-#[derive(Debug, Clone)]
-pub struct CNonce {
-    pub ptr: *const u8,
-}
-
-impl Default for CNonce {
-    fn default() -> Self {
-        let empty_vec = Vec::<u8>::new();
-        let nonce = empty_vec.as_ptr();
-        mem::forget(empty_vec);
-        Self { ptr: nonce }
-    }
-}
-
-impl TryFrom<[u8; NONCE_BYTES_SIZE]> for CNonce {
-    type Error = SommelierDriveCryptoError;
-    fn try_from(value: [u8; NONCE_BYTES_SIZE]) -> Result<Self, Self::Error> {
-        mem::forget(value);
-        let ptr = value.as_ptr();
-        Ok(Self { ptr })
-    }
-}
-
-impl TryInto<[u8; NONCE_BYTES_SIZE]> for CNonce {
-    type Error = SommelierDriveCryptoError;
-    fn try_into(self) -> Result<[u8; NONCE_BYTES_SIZE], Self::Error> {
-        let nonce_slice = unsafe { slice::from_raw_parts(self.ptr, NONCE_BYTES_SIZE) };
-        let mut nonce = [0; NONCE_BYTES_SIZE];
-        for i in 0..NONCE_BYTES_SIZE {
-            nonce[i] = nonce_slice[i];
-        }
-        Ok(nonce)
     }
 }
 
@@ -473,6 +431,20 @@ easy_ffi!(fn_permission_ct_pointer =>
             Some(s) => panic!("sommelier-drive-cryptos-panic: {}",s),
             None => panic!("sommelier-drive-cryptos-panic without an error message"),
         }
+    }
+);
+
+fn_str_pointer!(
+    fn encryptNewFileWithSharedKey(
+        recovered_shared_key: CRecoveredSharedKey,
+        contents_bytes: *mut u8,
+        contents_bytes_size: c_uint,
+    ) -> Result<*mut c_char, SommelierDriveCryptoError> {
+        let recovered_shared_key = recovered_shared_key.try_into()?;
+        let contents_bytes =
+            unsafe { slice::from_raw_parts_mut(contents_bytes, contents_bytes_size as usize) };
+        let contents_ct = encrypt_new_file_with_shared_key(&recovered_shared_key, &contents_bytes)?;
+        Ok(str2ptr(serde_json::to_string(&contents_ct)?))
     }
 );
 
