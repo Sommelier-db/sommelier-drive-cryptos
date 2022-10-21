@@ -20,8 +20,13 @@ typedef struct CPermissionCT {
   struct CFilePathCT filepath_ct;
 } CPermissionCT;
 
+typedef struct CNonce {
+  const uint8_t *ptr;
+} CNonce;
+
 typedef struct CRecoveredSharedKey {
   char *shared_key;
+  struct CNonce nonce;
   char *shared_key_hash;
 } CRecoveredSharedKey;
 

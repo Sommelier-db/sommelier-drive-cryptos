@@ -11,7 +11,7 @@ pub use pke::*;
 use sha2::{Digest, Sha256};
 pub use ske::*;
 
-use rsa::{RsaPrivateKey, RsaPublicKey};
+use rsa::{rand_core::RngCore, RsaPrivateKey, RsaPublicKey};
 use serde::{Deserialize, Serialize};
 use serde_json;
 use thiserror::Error;
@@ -41,27 +41,28 @@ pub enum SommelierDriveCryptoError {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FileCT {
-    pub(crate) shared_key_cts: Vec<Vec<u8>>,
-    pub(crate) filepath_cts: Vec<FilePathCT>,
-    pub(crate) shared_key_hash: Vec<u8>,
-    pub(crate) contents_ct: Vec<u8>,
+    shared_key_cts: Vec<Vec<u8>>,
+    filepath_cts: Vec<FilePathCT>,
+    shared_key_hash: Vec<u8>,
+    contents_ct: Vec<u8>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PermissionCT {
-    pub(crate) shared_key_ct: Vec<u8>,
-    pub(crate) filepath_ct: FilePathCT,
+    shared_key_ct: Vec<u8>,
+    filepath_ct: FilePathCT,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RecoveredSharedKey {
-    pub(crate) shared_key: SymmetricKey,
-    pub(crate) shared_key_hash: Vec<u8>,
+    shared_key: SymmetricKey,
+    nonce: [u8; NONCE_BYTES_SIZE],
+    shared_key_hash: Vec<u8>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FilePathCT {
-    pub(crate) ct: Vec<u8>,
+    ct: Vec<u8>,
 }
 
 pub fn encrypt_new_file(
@@ -71,13 +72,16 @@ pub fn encrypt_new_file(
 ) -> Result<FileCT, SommelierDriveCryptoError> {
     let mut rng = OsRng;
     let shared_key = ske_gen_key(&mut rng);
-    let contents_ct = ske_encrypt(&shared_key, [0; 12], contents_bytes)?;
+    let mut nonce = [0; NONCE_BYTES_SIZE];
+    rng.fill_bytes(&mut nonce);
+    let contents_ct = ske_encrypt(&shared_key, &nonce, contents_bytes)?;
     let shared_key_hash = Sha256::digest(&shared_key.0).to_vec();
 
     let mut shared_key_cts = Vec::new();
     let mut filepath_cts = Vec::new();
+    let plaintext = vec![&nonce[..], &shared_key.0].concat();
     for pk in pks.into_iter() {
-        let shared_key_ct = pke_encrypt(pk, &shared_key.0, &mut rng)?;
+        let shared_key_ct = pke_encrypt(pk, &plaintext, &mut rng)?;
         let filepath_ct = encrypt_filepath(pk, filepath)?;
         shared_key_cts.push(shared_key_ct);
         filepath_cts.push(filepath_ct);
@@ -95,10 +99,12 @@ pub fn recover_shared_key(
     ct: &[u8],
 ) -> Result<RecoveredSharedKey, SommelierDriveCryptoError> {
     let pke_plaintext = pke_decrypt(sk, &ct)?;
-    let shared_key = SymmetricKey(pke_plaintext.to_vec());
+    let nonce = pke_plaintext[0..NONCE_BYTES_SIZE].try_into().unwrap();
+    let shared_key = SymmetricKey(pke_plaintext[NONCE_BYTES_SIZE..].to_vec());
     let shared_key_hash = Sha256::digest(&shared_key.0).to_vec();
     Ok(RecoveredSharedKey {
         shared_key,
+        nonce,
         shared_key_hash,
     })
 }
@@ -107,7 +113,7 @@ pub fn decrypt_contents_ct(
     shared_key: &RecoveredSharedKey,
     ct: &[u8],
 ) -> Result<Vec<u8>, SommelierDriveCryptoError> {
-    let plaintext = ske_decrypt(&shared_key.shared_key, [0; 12], ct)?;
+    let plaintext = ske_decrypt(&shared_key.shared_key, &shared_key.nonce, ct)?;
     Ok(plaintext)
 }
 
@@ -117,7 +123,12 @@ pub fn add_permission(
     filepath: &str,
 ) -> Result<PermissionCT, SommelierDriveCryptoError> {
     let mut rng = OsRng;
-    let shared_key_ct = pke_encrypt(pk, &recovered_shared_key.shared_key.0, &mut rng)?;
+    let plaintext = vec![
+        &recovered_shared_key.nonce[..],
+        &recovered_shared_key.shared_key.0,
+    ]
+    .concat();
+    let shared_key_ct = pke_encrypt(pk, &plaintext, &mut rng)?;
     let filepath_ct = encrypt_filepath(pk, filepath)?;
     let shared_key_ct = PermissionCT {
         shared_key_ct,
