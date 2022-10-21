@@ -16,12 +16,12 @@ pub enum PkeError {
 
 const BITS: usize = 2048;
 
-pub fn gen_secret_key<R: CryptoRng + RngCore>(rng: &mut R) -> Result<PkeSecretKey, PkeError> {
+pub fn pke_gen_secret_key<R: CryptoRng + RngCore>(rng: &mut R) -> Result<PkeSecretKey, PkeError> {
     let private_key = RsaPrivateKey::new(rng, BITS).map_err(|_| PkeError::SecretKeyGenError)?;
     Ok(PkeSecretKey(private_key))
 }
 
-pub fn gen_public_key(sk: &PkeSecretKey) -> PkePublicKey {
+pub fn pke_gen_public_key(sk: &PkeSecretKey) -> PkePublicKey {
     let public_key = RsaPublicKey::from(&sk.0);
     PkePublicKey(public_key)
 }

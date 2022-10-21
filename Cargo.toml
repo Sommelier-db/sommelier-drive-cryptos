@@ -13,3 +13,7 @@ serde = {version = "1.0.103", features = ["derive"]}
 thiserror = "1.0.37"
 sha2 = "0.10.6"
 signature = "1.6.4"
+
+[dev-dependencies]
+rand = "0.7.0"
+rand_xorshift = "0.2"

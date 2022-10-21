@@ -1,6 +1,5 @@
 use crate::SymmetricKey;
 use aes_gcm::aead::{
-    consts::*,
     rand_core::{CryptoRng, RngCore},
     Aead,
 };
@@ -23,37 +22,22 @@ pub fn ske_gen_key<R: CryptoRng + RngCore>(rng: &mut R) -> SymmetricKey {
 
 pub fn ske_encrypt(
     key: &SymmetricKey,
-    region_name: &str,
-    user_id: usize,
-    nonce: usize,
+    nonce: [u8; 12],
     plaintext: &[u8],
 ) -> Result<Vec<u8>, SkeError> {
     let cipher = Aes128Gcm::new_from_slice(&key.0).map_err(|e| SkeError::InvalidKeyLength(e))?;
-    let nonce = gen_nonce(region_name, user_id, nonce);
+    let nonce = Nonce::from_slice(&nonce);
     let ct = cipher
         .encrypt(&nonce, plaintext)
         .map_err(|_| SkeError::EncryptionError)?;
     Ok(ct)
 }
 
-pub fn ske_decrypt(
-    key: &SymmetricKey,
-    region_name: &str,
-    user_id: usize,
-    nonce: usize,
-    ct: &[u8],
-) -> Result<Vec<u8>, SkeError> {
+pub fn ske_decrypt(key: &SymmetricKey, nonce: [u8; 12], ct: &[u8]) -> Result<Vec<u8>, SkeError> {
     let cipher = Aes128Gcm::new_from_slice(&key.0).map_err(|e| SkeError::InvalidKeyLength(e))?;
-    let nonce = gen_nonce(region_name, user_id, nonce);
+    let nonce = Nonce::from_slice(&nonce);
     let plaintext = cipher
         .decrypt(&nonce, ct)
         .map_err(|_| SkeError::EncryptionError)?;
     Ok(plaintext)
-}
-
-fn gen_nonce(region_name: &str, user_id: usize, nonce: usize) -> Nonce<U12> {
-    let mut nonce_bytes = region_name.as_bytes().to_vec();
-    nonce_bytes.append(&mut user_id.to_be_bytes().to_vec());
-    nonce_bytes.append(&mut nonce.to_be_bytes().to_vec());
-    Nonce::from_slice(&nonce_bytes).clone()
 }
