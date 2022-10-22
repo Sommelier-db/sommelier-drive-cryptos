@@ -510,7 +510,7 @@ fn_filepath_ct_pointer!(
 );
 
 fn_str_pointer!(
-    fn decryptFilepath(
+    fn decryptFilepathCT(
         sk: *mut c_char,
         ct: CFilePathCT,
     ) -> Result<*mut c_char, SommelierDriveCryptoError> {
@@ -624,7 +624,7 @@ mod test {
         let filepath = CString::new("/test/filepath_test/test.txt").unwrap();
 
         let ct = encryptFilepath(pk, filepath.clone().into_raw());
-        let plaintext = decryptFilepath(sk, ct);
+        let plaintext = decryptFilepathCT(sk, ct);
         let plaintext = unsafe { CString::from_raw(plaintext) };
         assert_eq!(filepath, plaintext);
     }
