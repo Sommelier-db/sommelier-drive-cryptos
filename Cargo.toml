@@ -22,7 +22,7 @@ rand_xorshift = "0.2"
 cbindgen = "0.24.3"
 
 [lib]
-crate-type = ["cdylib"]
+crate-type = ["rlib","cdylib"]
 
 [features]
 default = ["c_api"]
