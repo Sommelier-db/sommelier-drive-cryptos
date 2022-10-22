@@ -16,20 +16,11 @@ pub use pke::*;
 use sha2::{Digest, Sha256};
 pub use ske::*;
 
+use hex;
 use rsa::{rand_core::RngCore, RsaPrivateKey, RsaPublicKey};
 use serde::{Deserialize, Serialize};
-use serde_hex::{SerHex, StrictCapPfx};
 use serde_json;
 use thiserror::Error;
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct PkeSecretKey(RsaPrivateKey);
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct PkePublicKey(RsaPublicKey);
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SymmetricKey(Vec<u8>);
 
 #[derive(Error, Debug)]
 pub enum SommelierDriveCryptoError {
@@ -43,6 +34,31 @@ pub enum SommelierDriveCryptoError {
     Utf8Error(#[from] FromUtf8Error),
     #[error(transparent)]
     JsonStringError(#[from] serde_json::Error),
+    #[error(transparent)]
+    HexError(#[from] hex::FromHexError),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PkeSecretKey(RsaPrivateKey);
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PkePublicKey(RsaPublicKey);
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SymmetricKey(Vec<u8>);
+
+impl TryFrom<String> for SymmetricKey {
+    type Error = SommelierDriveCryptoError;
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        let bytes = hex::decode(value)?;
+        Ok(Self(bytes))
+    }
+}
+
+impl Into<String> for SymmetricKey {
+    fn into(self) -> String {
+        hex::encode(&self.0)
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -70,18 +86,41 @@ pub struct FilePathCT {
     ct: Vec<u8>,
 }
 
+impl TryFrom<String> for FilePathCT {
+    type Error = SommelierDriveCryptoError;
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        let ct = hex::decode(value)?;
+        Ok(Self { ct })
+    }
+}
+
+impl Into<String> for FilePathCT {
+    fn into(self) -> String {
+        hex::encode(&self.ct)
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct HashDigest(#[serde(with = "SerHex::<StrictCapPfx>")] [u8; Self::SIZE]);
+pub struct HashDigest(Vec<u8>);
+
+impl TryFrom<String> for HashDigest {
+    type Error = SommelierDriveCryptoError;
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        let bytes = hex::decode(value)?;
+        Ok(Self(bytes))
+    }
+}
+
+impl Into<String> for HashDigest {
+    fn into(self) -> String {
+        hex::encode(&self.0)
+    }
+}
 
 impl HashDigest {
     const SIZE: usize = 32;
-    pub fn to_string(&self) -> Result<String, SommelierDriveCryptoError> {
-        let string = serde_json::to_string(self)?;
-        Ok(string[1..(Self::SIZE * 2 + 3)].to_string())
-    }
-
     fn from_bytes(bytes: &[u8]) -> Self {
-        Self(bytes.try_into().unwrap())
+        Self(bytes.to_vec())
     }
 }
 
@@ -304,8 +343,7 @@ mod test {
             .iter()
             .map(|sk| pke_gen_public_key(sk))
             .collect::<Vec<PkePublicKey>>();
-
-        let filepath = String::from_utf8([0; 64].to_vec()).unwrap();
+        let filepath = "a".to_string().repeat(64);
         let text = [1; 1048576 * 2];
         let ct = encrypt_new_file(&pks, &filepath, &text).unwrap();
 

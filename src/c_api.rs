@@ -1,6 +1,7 @@
 use crate::*;
 use core::slice;
 use easy_ffi::easy_ffi;
+use hex;
 use std::collections::BTreeMap;
 use std::ffi::*;
 use std::mem;
@@ -52,8 +53,8 @@ impl TryFrom<FileCT> for CFileCT {
         filepath_cts_vec.shrink_to_fit();
         let filepath_cts = filepath_cts_vec.as_mut_ptr();
         mem::forget(filepath_cts_vec);
-        let shared_key_hash = str2ptr(serde_json::to_string(&value.shared_key_hash)?);
-        let contents_ct = str2ptr(serde_json::to_string(&value.contents_ct)?);
+        let shared_key_hash = str2ptr(hex::encode(&value.shared_key_hash.0));
+        let contents_ct = str2ptr(hex::encode(&value.contents_ct));
         Ok(Self {
             num_cts,
             shared_key_cts,
@@ -78,8 +79,8 @@ impl TryInto<FileCT> for CFileCT {
             .into_iter()
             .map(|ct| ct.clone().try_into())
             .collect::<Result<_, _>>()?;
-        let shared_key_hash = serde_json::from_str::<HashDigest>(ptr2str(self.shared_key_hash))?;
-        let contents_ct = serde_json::from_str::<Vec<u8>>(ptr2str(self.contents_ct))?;
+        let shared_key_hash = HashDigest::try_from(ptr2str(self.shared_key_hash).to_string())?;
+        let contents_ct = hex::decode(ptr2str(self.contents_ct))?;
         Ok(FileCT {
             shared_key_cts,
             filepath_cts,
@@ -139,8 +140,8 @@ pub struct CRecoveredSharedKey {
 impl Default for CRecoveredSharedKey {
     fn default() -> Self {
         Self {
-            shared_key: str2ptr(String::new()),
-            shared_key_hash: str2ptr(String::new()),
+            shared_key: ptr::null_mut(),
+            shared_key_hash: ptr::null_mut(),
         }
     }
 }
@@ -148,8 +149,8 @@ impl Default for CRecoveredSharedKey {
 impl TryFrom<RecoveredSharedKey> for CRecoveredSharedKey {
     type Error = SommelierDriveCryptoError;
     fn try_from(value: RecoveredSharedKey) -> Result<Self, Self::Error> {
-        let shared_key = str2ptr(serde_json::to_string(&value.shared_key)?);
-        let shared_key_hash = str2ptr(serde_json::to_string(&value.shared_key_hash)?);
+        let shared_key = str2ptr(value.shared_key.into());
+        let shared_key_hash = str2ptr(value.shared_key_hash.into());
         Ok(Self {
             shared_key,
             shared_key_hash,
@@ -160,8 +161,8 @@ impl TryFrom<RecoveredSharedKey> for CRecoveredSharedKey {
 impl TryInto<RecoveredSharedKey> for CRecoveredSharedKey {
     type Error = SommelierDriveCryptoError;
     fn try_into(self) -> Result<RecoveredSharedKey, Self::Error> {
-        let shared_key = serde_json::from_str(&ptr2str(self.shared_key))?;
-        let shared_key_hash = serde_json::from_str(&ptr2str(self.shared_key_hash))?;
+        let shared_key = SymmetricKey::try_from(ptr2str(self.shared_key).to_string())?;
+        let shared_key_hash = HashDigest::try_from(ptr2str(self.shared_key_hash).to_string())?;
         Ok(RecoveredSharedKey {
             shared_key,
             shared_key_hash,
@@ -178,7 +179,7 @@ pub struct CSharedKeyCT {
 impl Default for CSharedKeyCT {
     fn default() -> Self {
         Self {
-            ptr: str2ptr(String::new()),
+            ptr: ptr::null_mut(),
         }
     }
 }
@@ -187,7 +188,7 @@ impl TryFrom<Vec<u8>> for CSharedKeyCT {
     type Error = SommelierDriveCryptoError;
     fn try_from(value: Vec<u8>) -> Result<Self, Self::Error> {
         Ok(Self {
-            ptr: str2ptr(serde_json::to_string(&value)?),
+            ptr: str2ptr(hex::encode(&value)),
         })
     }
 }
@@ -196,7 +197,7 @@ impl TryInto<Vec<u8>> for CSharedKeyCT {
     type Error = SommelierDriveCryptoError;
     fn try_into(self) -> Result<Vec<u8>, Self::Error> {
         let str = ptr2str(self.ptr);
-        let vec = serde_json::from_str::<Vec<u8>>(str)?;
+        let vec = hex::decode(str)?;
         Ok(vec)
     }
 }
@@ -210,7 +211,7 @@ pub struct CFilePathCT {
 impl Default for CFilePathCT {
     fn default() -> Self {
         Self {
-            ptr: str2ptr(String::new()),
+            ptr: ptr::null_mut(),
         }
     }
 }
@@ -218,8 +219,9 @@ impl Default for CFilePathCT {
 impl TryFrom<FilePathCT> for CFilePathCT {
     type Error = SommelierDriveCryptoError;
     fn try_from(value: FilePathCT) -> Result<Self, Self::Error> {
+        let s: String = value.clone().into();
         Ok(Self {
-            ptr: str2ptr(serde_json::to_string(&value)?),
+            ptr: str2ptr(value.into()),
         })
     }
 }
@@ -228,7 +230,7 @@ impl TryInto<FilePathCT> for CFilePathCT {
     type Error = SommelierDriveCryptoError;
     fn try_into(self) -> Result<FilePathCT, Self::Error> {
         let str = ptr2str(self.ptr);
-        let ct = serde_json::from_str::<FilePathCT>(str)?;
+        let ct = FilePathCT::try_from(str.to_string())?;
         Ok(ct)
     }
 }
@@ -433,7 +435,7 @@ fn_contents_bytes_pointer!(
         ct: *mut c_char,
     ) -> Result<CContentsBytes, SommelierDriveCryptoError> {
         let shared_key = shared_key.try_into()?;
-        let ct = serde_json::from_str::<Vec<u8>>(ptr2str(ct))?;
+        let ct = hex::decode(ptr2str(ct))?;
         let mut contents = decrypt_contents_ct(&shared_key, &ct)?;
         contents.shrink_to_fit();
         let contents_ptr = contents.as_ptr();
@@ -467,7 +469,7 @@ fn_str_pointer!(
         let recovered_shared_key = recovered_shared_key.try_into()?;
         let contents_bytes = unsafe { slice::from_raw_parts(contents.ptr, contents.len) };
         let contents_ct = encrypt_new_file_with_shared_key(&recovered_shared_key, &contents_bytes)?;
-        Ok(str2ptr(serde_json::to_string(&contents_ct)?))
+        Ok(str2ptr(hex::encode(&contents_ct)))
     }
 );
 
@@ -528,7 +530,7 @@ fn_str_pointer!(
     ) -> Result<*mut c_char, SommelierDriveCryptoError> {
         let parent_filepath = ptr2str(parent_filepath);
         let hash_bytes = compute_permission_hash(user_id as u64, parent_filepath);
-        let hash_str = serde_json::to_string(&hash_bytes)?;
+        let hash_str = hash_bytes.into();
         Ok(str2ptr(hash_str))
     }
 );
@@ -703,5 +705,29 @@ mod test {
         let hash1_str = unsafe { CString::from_raw(hash1) };
         let hash2_str = unsafe { CString::from_raw(hash2) };
         assert_ne!(hash1_str, hash2_str);
+    }
+
+    #[test]
+    fn c_large_file_test() {
+        let sk = pkeGenSecretKey();
+        let pk = pkeGenPublicKey(sk);
+
+        let mut pks = [pk];
+        let filepath = "a".to_string().repeat(64);
+        let filepath = CString::new(filepath).unwrap();
+        let text_bytes = [1; 1048576 * 2];
+        let text_len = text_bytes.len();
+        let contents = CContentsBytes {
+            ptr: text_bytes.as_ptr(),
+            len: text_len,
+        };
+        let ct = encryptNewFile(pks.as_mut_ptr(), 1, filepath.clone().into_raw(), contents);
+
+        let shared_key_cts = unsafe { slice::from_raw_parts_mut(ct.shared_key_cts, 1) };
+        let recovered_shared_key = recoverSharedKey(sk, shared_key_cts[0].clone());
+        let decrypted_contents = decryptContentsCT(recovered_shared_key, ct.contents_ct);
+        let decrypted_text_bytes =
+            unsafe { slice::from_raw_parts(decrypted_contents.ptr, decrypted_contents.len) };
+        assert_eq!(decrypted_text_bytes, text_bytes);
     }
 }
