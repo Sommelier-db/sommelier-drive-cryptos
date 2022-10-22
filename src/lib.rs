@@ -18,6 +18,7 @@ pub use ske::*;
 
 use rsa::{rand_core::RngCore, RsaPrivateKey, RsaPublicKey};
 use serde::{Deserialize, Serialize};
+use serde_hex::{SerHex, StrictCapPfx};
 use serde_json;
 use thiserror::Error;
 
@@ -48,7 +49,7 @@ pub enum SommelierDriveCryptoError {
 pub struct FileCT {
     shared_key_cts: Vec<Vec<u8>>,
     filepath_cts: Vec<FilePathCT>,
-    shared_key_hash: Vec<u8>,
+    shared_key_hash: HashDigest,
     contents_ct: Vec<u8>,
 }
 
@@ -61,12 +62,27 @@ pub struct PermissionCT {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RecoveredSharedKey {
     shared_key: SymmetricKey,
-    shared_key_hash: Vec<u8>,
+    shared_key_hash: HashDigest,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FilePathCT {
     ct: Vec<u8>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct HashDigest(#[serde(with = "SerHex::<StrictCapPfx>")] [u8; Self::SIZE]);
+
+impl HashDigest {
+    const SIZE: usize = 32;
+    pub fn to_string(&self) -> Result<String, SommelierDriveCryptoError> {
+        let string = serde_json::to_string(self)?;
+        Ok(string[1..(Self::SIZE * 2 + 3)].to_string())
+    }
+
+    fn from_bytes(bytes: &[u8]) -> Self {
+        Self(bytes.try_into().unwrap())
+    }
 }
 
 pub fn encrypt_new_file(
@@ -79,7 +95,7 @@ pub fn encrypt_new_file(
     let mut nonce = [0; NONCE_BYTES_SIZE];
     rng.fill_bytes(&mut nonce);
     let contents_ct = ske_encrypt(&shared_key, &nonce, contents_bytes)?;
-    let shared_key_hash = Sha256::digest(&shared_key.0).to_vec();
+    let shared_key_hash = HashDigest::from_bytes(&Sha256::digest(&shared_key.0));
 
     let mut shared_key_cts = Vec::new();
     let mut filepath_cts = Vec::new();
@@ -103,7 +119,7 @@ pub fn recover_shared_key(
 ) -> Result<RecoveredSharedKey, SommelierDriveCryptoError> {
     let pke_plaintext = pke_decrypt(sk, &ct)?;
     let shared_key = SymmetricKey(pke_plaintext.to_vec());
-    let shared_key_hash = Sha256::digest(&shared_key.0).to_vec();
+    let shared_key_hash = HashDigest::from_bytes(&Sha256::digest(&shared_key.0));
     Ok(RecoveredSharedKey {
         shared_key,
         shared_key_hash,
@@ -163,11 +179,11 @@ pub fn decrypt_filepath_ct(
     Ok(filepath)
 }
 
-pub fn compute_permission_hash(user_id: u64, parent_filepath: &str) -> Vec<u8> {
+pub fn compute_permission_hash(user_id: u64, parent_filepath: &str) -> HashDigest {
     let mut hasher = Sha256::new();
     hasher.update(user_id.to_be_bytes());
     hasher.update(parent_filepath.as_bytes());
-    hasher.finalize().to_vec()
+    HashDigest(hasher.finalize().to_vec().try_into().unwrap())
 }
 
 #[cfg(test)]

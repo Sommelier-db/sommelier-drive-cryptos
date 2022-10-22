@@ -78,7 +78,7 @@ impl TryInto<FileCT> for CFileCT {
             .into_iter()
             .map(|ct| ct.clone().try_into())
             .collect::<Result<_, _>>()?;
-        let shared_key_hash = serde_json::from_str::<Vec<u8>>(ptr2str(self.shared_key_hash))?;
+        let shared_key_hash = serde_json::from_str::<HashDigest>(ptr2str(self.shared_key_hash))?;
         let contents_ct = serde_json::from_str::<Vec<u8>>(ptr2str(self.contents_ct))?;
         Ok(FileCT {
             shared_key_cts,
