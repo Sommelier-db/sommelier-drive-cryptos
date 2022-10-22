@@ -258,16 +258,16 @@ fn_str_pointer!(
     fn pkeGenSecretKey() -> Result<*mut c_char, SommelierDriveCryptoError> {
         let mut rng = OsRng;
         let sk = pke_gen_secret_key(&mut rng)?;
-        let sk_str = serde_json::to_string(&sk)?;
+        let sk_str = sk.try_into()?;
         Ok(str2ptr(sk_str))
     }
 );
 
 fn_str_pointer!(
     fn pkeGenPublicKey(sk: *mut c_char) -> Result<*mut c_char, SommelierDriveCryptoError> {
-        let sk = serde_json::from_str::<PkeSecretKey>(&ptr2str(sk))?;
+        let sk = PkeSecretKey::try_from(ptr2str(sk).to_string())?;
         let pk = pke_gen_public_key(&sk);
-        let pk_str = serde_json::to_string(&pk)?;
+        let pk_str = pk.try_into()?;
         Ok(str2ptr(pk_str))
     }
 );
@@ -282,7 +282,7 @@ fn_str_pointer!(
         vals: *mut *mut c_char,
         num_field: usize,
     ) -> Result<*mut c_char, SommelierDriveCryptoError> {
-        let sk = serde_json::from_str::<PkeSecretKey>(&ptr2str(sk))?;
+        let sk = PkeSecretKey::try_from(ptr2str(sk).to_string())?;
         let region_name = ptr2str(region_name);
         let method = ptr2str(method);
         let uri = ptr2str(uri);
@@ -330,7 +330,7 @@ fn_permission_int_pointer!(
         num_field: usize,
         signature: *mut c_char,
     ) -> Result<c_int, SommelierDriveCryptoError> {
-        let pk = serde_json::from_str::<PkePublicKey>(&ptr2str(pk))?;
+        let pk = PkePublicKey::try_from(ptr2str(pk).to_string())?;
         let region_name = ptr2str(region_name);
         let method = ptr2str(method);
         let uri = ptr2str(uri);
@@ -380,7 +380,7 @@ fn_file_ct_pointer!(
         let pks_slice = unsafe { slice::from_raw_parts_mut(pks, num_pk) };
         let pks: Vec<PkePublicKey> = pks_slice
             .into_iter()
-            .map(|ptr| serde_json::from_str::<PkePublicKey>(&ptr2str(*ptr)))
+            .map(|ptr| PkePublicKey::try_from(ptr2str(*ptr).to_string()))
             .collect::<Result<_, _>>()?;
         let filepath = ptr2str(filepath);
         let contents_bytes = unsafe { slice::from_raw_parts(contents.ptr, contents.len) };
@@ -407,7 +407,7 @@ fn_recovered_shared_key_pointer!(
         sk: *mut c_char,
         ct: CSharedKeyCT,
     ) -> Result<CRecoveredSharedKey, SommelierDriveCryptoError> {
-        let sk = serde_json::from_str::<PkeSecretKey>(&ptr2str(sk))?;
+        let sk = PkeSecretKey::try_from(ptr2str(sk).to_string())?;
         let ct: Vec<u8> = ct.try_into()?;
         let recovered_shared_key = recover_shared_key(&sk, &ct)?;
         Ok(recovered_shared_key.try_into()?)
@@ -479,7 +479,7 @@ fn_permission_ct_pointer!(
         recovered_shared_key: CRecoveredSharedKey,
         filepath: *mut c_char,
     ) -> Result<CPermissionCT, SommelierDriveCryptoError> {
-        let pk = serde_json::from_str::<PkePublicKey>(ptr2str(pk))?;
+        let pk = PkePublicKey::try_from(ptr2str(pk).to_string())?;
         let recovered_shared_key = recovered_shared_key.try_into()?;
         let filepath = ptr2str(filepath);
         let permission_ct = add_permission(&pk, &recovered_shared_key, filepath)?;
@@ -504,7 +504,7 @@ fn_filepath_ct_pointer!(
         pk: *mut c_char,
         filepath: *mut c_char,
     ) -> Result<CFilePathCT, SommelierDriveCryptoError> {
-        let pk = serde_json::from_str::<PkePublicKey>(ptr2str(pk))?;
+        let pk = PkePublicKey::try_from(ptr2str(pk).to_string())?;
         let filepath = ptr2str(filepath);
         let ct = encrypt_filepath(&pk, filepath)?;
         Ok(ct.try_into()?)
@@ -516,7 +516,7 @@ fn_str_pointer!(
         sk: *mut c_char,
         ct: CFilePathCT,
     ) -> Result<*mut c_char, SommelierDriveCryptoError> {
-        let sk = serde_json::from_str::<PkeSecretKey>(ptr2str(sk))?;
+        let sk = PkeSecretKey::try_from(ptr2str(sk).to_string())?;
         let ct = ct.try_into()?;
         let filepath = decrypt_filepath_ct(&sk, &ct)?;
         Ok(str2ptr(filepath))

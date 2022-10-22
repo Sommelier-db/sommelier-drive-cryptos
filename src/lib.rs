@@ -41,8 +41,38 @@ pub enum SommelierDriveCryptoError {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PkeSecretKey(RsaPrivateKey);
 
+impl TryFrom<String> for PkeSecretKey {
+    type Error = SommelierDriveCryptoError;
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        Ok(serde_json::from_str(&value)?)
+    }
+}
+
+impl TryInto<String> for PkeSecretKey {
+    type Error = SommelierDriveCryptoError;
+    fn try_into(self) -> Result<String, Self::Error> {
+        let str = serde_json::to_string(&self)?;
+        Ok(str)
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PkePublicKey(RsaPublicKey);
+
+impl TryFrom<String> for PkePublicKey {
+    type Error = SommelierDriveCryptoError;
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        Ok(serde_json::from_str(&value)?)
+    }
+}
+
+impl TryInto<String> for PkePublicKey {
+    type Error = SommelierDriveCryptoError;
+    fn try_into(self) -> Result<String, Self::Error> {
+        let str = serde_json::to_string(&self)?;
+        Ok(str)
+    }
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SymmetricKey(Vec<u8>);
