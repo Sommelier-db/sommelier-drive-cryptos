@@ -19,7 +19,7 @@ pub fn gen_signature<R: CryptoRng + RngCore>(
     region_name: &str,
     method: &str,
     uri: &str,
-    field_vals: &BTreeMap<String, String>,
+    field_vals: BTreeMap<&str, &str>,
     rng: &mut R,
 ) -> Vec<u8> {
     let signing_key = BlindedSigningKey::<Sha256>::new(sk.0.clone());
@@ -33,7 +33,7 @@ pub fn verify_signature(
     region_name: &str,
     method: &str,
     uri: &str,
-    field_vals: &BTreeMap<String, String>,
+    field_vals: BTreeMap<&str, &str>,
     signature: &[u8],
 ) -> Result<bool, SignError> {
     let vk = VerifyingKey::<Sha256>::new(pk.0.clone());
@@ -48,7 +48,7 @@ fn build_sign_data(
     region_name: &str,
     method: &str,
     uri: &str,
-    field_vals: &BTreeMap<String, String>,
+    field_vals: BTreeMap<&str, &str>,
 ) -> Vec<u8> {
     let mut data = region_name.as_bytes().to_vec();
     data.append(&mut method.as_bytes().to_vec());

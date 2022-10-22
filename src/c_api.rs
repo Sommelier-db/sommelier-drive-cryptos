@@ -298,10 +298,10 @@ fn_str_pointer!(
             .collect::<Vec<&str>>();
         let mut field_vals = BTreeMap::new();
         for (field, val) in fields.into_iter().zip(vals) {
-            field_vals.insert(field.to_string(), val.to_string());
+            field_vals.insert(field, val);
         }
         let mut rng = OsRng;
-        let signature = gen_signature(&sk, region_name, method, uri, &field_vals, &mut rng);
+        let signature = gen_signature(&sk, region_name, method, uri, field_vals, &mut rng);
         let sign_str = serde_json::to_string(&signature)?;
         Ok(str2ptr(sign_str))
     }
@@ -346,10 +346,10 @@ fn_permission_int_pointer!(
             .collect::<Vec<&str>>();
         let mut field_vals = BTreeMap::new();
         for (field, val) in fields.into_iter().zip(vals) {
-            field_vals.insert(field.to_string(), val.to_string());
+            field_vals.insert(field, val);
         }
         let signature = serde_json::from_str::<Vec<u8>>(ptr2str(signature))?;
-        let verified = verify_signature(&pk, region_name, method, uri, &field_vals, &signature)?;
+        let verified = verify_signature(&pk, region_name, method, uri, field_vals, &signature)?;
         if verified {
             Ok(1)
         } else {
