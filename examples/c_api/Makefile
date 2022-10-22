@@ -12,13 +12,13 @@ TARGET = $(BUILD)/main
 CC = gcc
 INCLUDES = ../../target/release
 LIBDIR = ../../target/release
-CFLAGS = -Wall -I$(INCLUDES) -L$(LIBDIR)
+CFLAGS = -Wall
 
 $(TARGET): $(OBJECTS)
-	$(CC) $(CFLAGS) -o $(TARGET) $^ $(LIBRARIES)
+	$(CC) $(CFLAGS) -L$(LIBDIR) -o $(TARGET) $^ $(LIBRARIES)
 
 $(OBJECT)/%.o: $(SOURCE)/%.c
-	$(CC) $(CFLAGS) -o $@ -c $<
+	$(CC) $(CFLAGS) -I$(INCLUDES)  -o $@ -c $<
 
 init:
 	mkdir $(BUILD)
