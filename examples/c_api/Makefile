@@ -10,7 +10,7 @@ LIBRARIES = -lsommelier_drive_cryptos
 
 TARGET = $(BUILD)/main
 CC = gcc
-INCLUDES = ../../
+INCLUDES = ../../target/release
 LIBDIR = ../../target/release
 CFLAGS = -Wall -I$(INCLUDES) -L$(LIBDIR)
 
@@ -18,7 +18,7 @@ $(TARGET): $(OBJECTS)
 	$(CC) $(CFLAGS) -o $(TARGET) $^ $(LIBRARIES)
 
 $(OBJECT)/%.o: $(SOURCE)/%.c
-	$(CC) -o $@ -c $<
+	$(CC) $(CFLAGS) -o $@ -c $<
 
 init:
 	mkdir $(BUILD)

@@ -7,7 +7,7 @@ int main()
     char *pk = pkeGenPublicKey(sk);
     char *filepath = "/alice/texts/lecture1.txt";
     CFilePathCT filepathCT = encryptFilepath(pk, filepath);
-    char *decrypted = decryptFilepath(sk, filepathCT);
+    char *decrypted = decryptFilepathCT(sk, filepathCT);
     printf("decrypted: %s\n", decrypted);
     free(filepathCT.ptr);
 }

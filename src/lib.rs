@@ -1,11 +1,16 @@
+#[cfg(feature = "c_api")]
 mod c_api;
+
 mod pk_signature;
 mod pke;
 mod ske;
 use std::string::FromUtf8Error;
 
 use aes_gcm::aead::OsRng;
+
+#[cfg(feature = "c_api")]
 pub use c_api::*;
+
 pub use pk_signature::*;
 pub use pke::*;
 use sha2::{Digest, Sha256};
