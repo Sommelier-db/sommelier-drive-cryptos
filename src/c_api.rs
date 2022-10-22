@@ -5,12 +5,13 @@ use std::collections::BTreeMap;
 use std::ffi::*;
 use std::mem;
 use std::os::raw::c_char;
-use std::os::raw::{c_int, c_uint};
+use std::os::raw::c_int;
+use std::ptr;
 
 #[repr(C)]
 #[derive(Debug, Clone)]
 pub struct CFileCT {
-    pub num_cts: c_uint,
+    pub num_cts: usize,
     pub shared_key_cts: *mut CSharedKeyCT,
     pub filepath_cts: *mut CFilePathCT,
     pub shared_key_hash: *mut c_char,
@@ -19,12 +20,8 @@ pub struct CFileCT {
 
 impl Default for CFileCT {
     fn default() -> Self {
-        let mut shared_key_cts_vec = Vec::<CSharedKeyCT>::new();
-        let shared_key_cts = shared_key_cts_vec.as_mut_ptr();
-        mem::forget(shared_key_cts_vec);
-        let mut filepath_cts_vec = Vec::<CFilePathCT>::new();
-        let filepath_cts = filepath_cts_vec.as_mut_ptr();
-        mem::forget(filepath_cts_vec);
+        let shared_key_cts = ptr::null_mut();
+        let filepath_cts = ptr::null_mut();
         Self {
             num_cts: 0,
             shared_key_cts,
@@ -38,21 +35,23 @@ impl Default for CFileCT {
 impl TryFrom<FileCT> for CFileCT {
     type Error = SommelierDriveCryptoError;
     fn try_from(value: FileCT) -> Result<Self, Self::Error> {
-        let num_cts = value.shared_key_cts.len() as c_uint;
+        let num_cts = value.shared_key_cts.len();
         let mut shared_key_cts_vec: Vec<CSharedKeyCT> = value
             .shared_key_cts
             .into_iter()
             .map(|ct| CSharedKeyCT::try_from(ct))
             .collect::<Result<_, _>>()?;
+        shared_key_cts_vec.shrink_to_fit();
         let shared_key_cts = shared_key_cts_vec.as_mut_ptr();
-        mem::forget(shared_key_cts);
+        mem::forget(shared_key_cts_vec);
         let mut filepath_cts_vec: Vec<CFilePathCT> = value
             .filepath_cts
             .into_iter()
             .map(|ct| CFilePathCT::try_from(ct))
             .collect::<Result<_, _>>()?;
+        filepath_cts_vec.shrink_to_fit();
         let filepath_cts = filepath_cts_vec.as_mut_ptr();
-        mem::forget(filepath_cts);
+        mem::forget(filepath_cts_vec);
         let shared_key_hash = str2ptr(serde_json::to_string(&value.shared_key_hash)?);
         let contents_ct = str2ptr(serde_json::to_string(&value.contents_ct)?);
         Ok(Self {
@@ -234,6 +233,13 @@ impl TryInto<FilePathCT> for CFilePathCT {
     }
 }
 
+#[repr(C)]
+#[derive(Debug, Clone)]
+pub struct CContentsBytes {
+    pub ptr: *const u8,
+    pub len: usize,
+}
+
 easy_ffi!(fn_str_pointer =>
     |err| {
         return str2ptr(String::new())
@@ -272,13 +278,12 @@ fn_str_pointer!(
         uri: *mut c_char,
         fields: *mut *mut c_char,
         vals: *mut *mut c_char,
-        num_field: c_uint,
+        num_field: usize,
     ) -> Result<*mut c_char, SommelierDriveCryptoError> {
         let sk = serde_json::from_str::<PkeSecretKey>(&ptr2str(sk))?;
         let region_name = ptr2str(region_name);
         let method = ptr2str(method);
         let uri = ptr2str(uri);
-        let num_field = num_field.try_into().unwrap();
         let fields_slice = unsafe { slice::from_raw_parts_mut(fields, num_field) };
         let fields = fields_slice
             .into_iter()
@@ -320,14 +325,13 @@ fn_permission_int_pointer!(
         uri: *mut c_char,
         fields: *mut *mut c_char,
         vals: *mut *mut c_char,
-        num_field: c_uint,
+        num_field: usize,
         signature: *mut c_char,
     ) -> Result<c_int, SommelierDriveCryptoError> {
         let pk = serde_json::from_str::<PkePublicKey>(&ptr2str(pk))?;
         let region_name = ptr2str(region_name);
         let method = ptr2str(method);
         let uri = ptr2str(uri);
-        let num_field = num_field.try_into().unwrap();
         let fields_slice = unsafe { slice::from_raw_parts_mut(fields, num_field) };
         let fields = fields_slice
             .into_iter()
@@ -367,19 +371,17 @@ easy_ffi!(fn_file_ct_pointer =>
 fn_file_ct_pointer!(
     fn encryptNewFile(
         pks: *mut *mut c_char,
-        num_pk: c_uint,
+        num_pk: usize,
         filepath: *mut c_char,
-        contents_bytes: *mut u8,
-        contents_bytes_size: c_uint,
+        contents: CContentsBytes,
     ) -> Result<CFileCT, SommelierDriveCryptoError> {
-        let pks_slice = unsafe { slice::from_raw_parts_mut(pks, num_pk as usize) };
+        let pks_slice = unsafe { slice::from_raw_parts_mut(pks, num_pk) };
         let pks: Vec<PkePublicKey> = pks_slice
             .into_iter()
             .map(|ptr| serde_json::from_str::<PkePublicKey>(&ptr2str(*ptr)))
             .collect::<Result<_, _>>()?;
         let filepath = ptr2str(filepath);
-        let contents_bytes =
-            unsafe { slice::from_raw_parts_mut(contents_bytes, contents_bytes_size as usize) };
+        let contents_bytes = unsafe { slice::from_raw_parts(contents.ptr, contents.len) };
         let file_ct = encrypt_new_file(&pks, filepath, contents_bytes)?;
         let c_file_ct = CFileCT::try_from(file_ct)?;
         Ok(c_file_ct)
@@ -410,15 +412,38 @@ fn_recovered_shared_key_pointer!(
     }
 );
 
-fn_str_pointer!(
+easy_ffi!(fn_contents_bytes_pointer =>
+    |err| {
+        return CContentsBytes {
+            ptr: ptr::null(),
+            len: 0
+        }
+    }
+    |panic_val| {
+        match panic_val.downcast_ref::<&'static str>() {
+            Some(s) => panic!("sommelier-drive-cryptos-panic: {}",s),
+            None => panic!("sommelier-drive-cryptos-panic without an error message"),
+        }
+    }
+);
+
+fn_contents_bytes_pointer!(
     fn decryptContentsCT(
         shared_key: CRecoveredSharedKey,
         ct: *mut c_char,
-    ) -> Result<*mut c_char, SommelierDriveCryptoError> {
+    ) -> Result<CContentsBytes, SommelierDriveCryptoError> {
         let shared_key = shared_key.try_into()?;
         let ct = serde_json::from_str::<Vec<u8>>(ptr2str(ct))?;
-        let contents = decrypt_contents_ct(&shared_key, &ct)?;
-        Ok(str2ptr(serde_json::to_string::<Vec<u8>>(&contents)?))
+        let mut contents = decrypt_contents_ct(&shared_key, &ct)?;
+        contents.shrink_to_fit();
+        let contents_ptr = contents.as_ptr();
+        let contents_bytes_len = contents.len();
+        mem::forget(contents);
+        let contents_bytes = CContentsBytes {
+            ptr: contents_ptr,
+            len: contents_bytes_len,
+        };
+        Ok(contents_bytes)
     }
 );
 
@@ -437,12 +462,10 @@ easy_ffi!(fn_permission_ct_pointer =>
 fn_str_pointer!(
     fn encryptNewFileWithSharedKey(
         recovered_shared_key: CRecoveredSharedKey,
-        contents_bytes: *mut u8,
-        contents_bytes_size: c_uint,
+        contents: CContentsBytes,
     ) -> Result<*mut c_char, SommelierDriveCryptoError> {
         let recovered_shared_key = recovered_shared_key.try_into()?;
-        let contents_bytes =
-            unsafe { slice::from_raw_parts_mut(contents_bytes, contents_bytes_size as usize) };
+        let contents_bytes = unsafe { slice::from_raw_parts(contents.ptr, contents.len) };
         let contents_ct = encrypt_new_file_with_shared_key(&recovered_shared_key, &contents_bytes)?;
         Ok(str2ptr(serde_json::to_string(&contents_ct)?))
     }
@@ -506,4 +529,155 @@ fn str2ptr(str: String) -> *mut c_char {
 fn ptr2str<'a>(ptr: *mut c_char) -> &'a str {
     let cstr = unsafe { CStr::from_ptr(ptr) };
     cstr.to_str().unwrap()
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn c_file_test() {
+        let sk = pkeGenSecretKey();
+        let pk = pkeGenPublicKey(sk);
+
+        let mut pks = [pk];
+        let filepath = CString::new("/test/filepath_test/test.txt").unwrap();
+        let text_bytes = b"Hello, World!";
+        let text_len = text_bytes.len();
+        let contents = CContentsBytes {
+            ptr: text_bytes.as_ptr(),
+            len: text_len,
+        };
+        let ct = encryptNewFile(pks.as_mut_ptr(), 1, filepath.clone().into_raw(), contents);
+
+        let shared_key_cts = unsafe { slice::from_raw_parts_mut(ct.shared_key_cts, 1) };
+        let recovered_shared_key = recoverSharedKey(sk, shared_key_cts[0].clone());
+        let decrypted_contents = decryptContentsCT(recovered_shared_key, ct.contents_ct);
+        let decrypted_text_bytes =
+            unsafe { slice::from_raw_parts(decrypted_contents.ptr, decrypted_contents.len) };
+        assert_eq!(decrypted_text_bytes, text_bytes);
+    }
+
+    #[test]
+    fn c_encrypt_new_file_with_shared_key_test() {
+        let sk = pkeGenSecretKey();
+        let pk = pkeGenPublicKey(sk);
+
+        let mut pks = [pk];
+        let filepath = CString::new("/test/filepath_test/test.txt").unwrap();
+        let text_bytes = b"Hello, World!";
+        let text_len = text_bytes.len();
+        let contents = CContentsBytes {
+            ptr: text_bytes.as_ptr(),
+            len: text_len,
+        };
+        let ct = encryptNewFile(pks.as_mut_ptr(), 1, filepath.clone().into_raw(), contents);
+
+        let shared_key_cts = unsafe { slice::from_raw_parts_mut(ct.shared_key_cts, 1) };
+        let recovered_shared_key = recoverSharedKey(sk, shared_key_cts[0].clone());
+
+        let new_text_bytes = b"Hello, World?";
+        let new_contents = CContentsBytes {
+            ptr: new_text_bytes.as_ptr(),
+            len: text_len,
+        };
+        let new_ct = encryptNewFileWithSharedKey(recovered_shared_key.clone(), new_contents);
+        let decrypted_contents = decryptContentsCT(recovered_shared_key, new_ct);
+        let decrypted_text_bytes =
+            unsafe { slice::from_raw_parts(decrypted_contents.ptr, decrypted_contents.len) };
+        assert_eq!(decrypted_text_bytes, new_text_bytes);
+        assert_ne!(decrypted_text_bytes, text_bytes);
+    }
+
+    #[test]
+    fn c_permission_test() {
+        let sk = pkeGenSecretKey();
+        let pk = pkeGenPublicKey(sk);
+
+        let mut pks = [pk];
+        let filepath = CString::new("/test/filepath_test/test.txt").unwrap();
+        let text_bytes = b"Hello, World!";
+        let text_len = text_bytes.len();
+        let contents = CContentsBytes {
+            ptr: text_bytes.as_ptr(),
+            len: text_len,
+        };
+        let ct = encryptNewFile(pks.as_mut_ptr(), 1, filepath.clone().into_raw(), contents);
+
+        let shared_key_cts = unsafe { slice::from_raw_parts_mut(ct.shared_key_cts, 1) };
+        let recovered_shared_key = recoverSharedKey(sk, shared_key_cts[0].clone());
+
+        let new_sk = pkeGenSecretKey();
+        let new_pk = pkeGenPublicKey(new_sk);
+        let new_permission_ct =
+            addPermission(new_pk, recovered_shared_key, filepath.clone().into_raw());
+        let recovered_shared_key = recoverSharedKey(new_sk, new_permission_ct.shared_key_ct);
+        let contents = decryptContentsCT(recovered_shared_key, ct.contents_ct);
+        let contents_bytes = unsafe { slice::from_raw_parts(contents.ptr, contents.len) };
+        assert_eq!(text_bytes, contents_bytes);
+    }
+
+    #[test]
+    fn c_filepath_test() {
+        let sk = pkeGenSecretKey();
+        let pk = pkeGenPublicKey(sk);
+        let filepath = CString::new("/test/filepath_test/test.txt").unwrap();
+
+        let ct = encryptFilepath(pk, filepath.clone().into_raw());
+        let plaintext = decryptFilepath(sk, ct);
+        let plaintext = unsafe { CString::from_raw(plaintext) };
+        assert_eq!(filepath, plaintext);
+    }
+
+    #[test]
+    fn c_sign_test() {
+        let sk = pkeGenSecretKey();
+        let pk = pkeGenPublicKey(sk);
+
+        let region_name = CString::new("sign_test").unwrap();
+        let method = CString::new("POST").unwrap();
+        let uri = CString::new("/user").unwrap();
+        let mut fields = vec![
+            CString::new("dataPK").unwrap().into_raw(),
+            CString::new("keywordPK").unwrap().into_raw(),
+        ];
+        let fields = fields.as_mut_ptr();
+        let mut vals = vec![
+            CString::new("pkd---").unwrap().into_raw(),
+            CString::new("pkw---").unwrap().into_raw(),
+        ];
+        let vals = vals.as_mut_ptr();
+        let signature = pkeGenSignature(
+            sk,
+            region_name.clone().into_raw(),
+            method.clone().into_raw(),
+            uri.clone().into_raw(),
+            fields,
+            vals,
+            2,
+        );
+
+        let mut fields = vec![
+            CString::new("keywordPK").unwrap().into_raw(),
+            CString::new("dataPK").unwrap().into_raw(),
+        ];
+        let fields = fields.as_mut_ptr();
+        let mut vals = vec![
+            CString::new("pkw---").unwrap().into_raw(),
+            CString::new("pkd---").unwrap().into_raw(),
+        ];
+        let vals = vals.as_mut_ptr();
+        let verified = verifySignature(
+            pk,
+            region_name.clone().into_raw(),
+            method.clone().into_raw(),
+            uri.clone().into_raw(),
+            fields,
+            vals,
+            2,
+            signature,
+        );
+        assert_eq!(verified, 1);
+        mem::drop(signature);
+    }
 }

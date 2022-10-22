@@ -25,8 +25,13 @@ typedef struct CRecoveredSharedKey {
   char *shared_key_hash;
 } CRecoveredSharedKey;
 
+typedef struct CContentsBytes {
+  const uint8_t *ptr;
+  size_t len;
+} CContentsBytes;
+
 typedef struct CFileCT {
-  unsigned int num_cts;
+  size_t num_cts;
   struct CSharedKeyCT *shared_key_cts;
   struct CFilePathCT *filepath_cts;
   char *shared_key_hash;
@@ -37,21 +42,21 @@ struct CPermissionCT addPermission(char *pk,
                                    struct CRecoveredSharedKey recovered_shared_key,
                                    char *filepath);
 
-char *decryptContentsCT(struct CRecoveredSharedKey shared_key, char *ct);
+struct CContentsBytes decryptContentsCT(struct CRecoveredSharedKey shared_key, char *ct);
 
 char *decryptFilepath(char *sk, struct CFilePathCT ct);
 
 struct CFilePathCT encryptFilepath(char *pk, char *filepath);
 
 struct CFileCT encryptNewFile(char **pks,
-                              unsigned int num_pk,
+                              size_t num_pk,
                               char *filepath,
-                              uint8_t *contents_bytes,
-                              unsigned int contents_bytes_size);
+                              const uint8_t *contents_bytes,
+                              size_t contents_bytes_size);
 
 char *encryptNewFileWithSharedKey(struct CRecoveredSharedKey recovered_shared_key,
                                   uint8_t *contents_bytes,
-                                  unsigned int contents_bytes_size);
+                                  size_t contents_bytes_size);
 
 char *pkeGenPublicKey(char *sk);
 
@@ -63,7 +68,7 @@ char *pkeGenSignature(char *sk,
                       char *uri,
                       char **fields,
                       char **vals,
-                      unsigned int num_field);
+                      size_t num_field);
 
 struct CRecoveredSharedKey recoverSharedKey(char *sk, struct CSharedKeyCT ct);
 
@@ -73,5 +78,5 @@ int verifySignature(char *pk,
                     char *uri,
                     char **fields,
                     char **vals,
-                    unsigned int num_field,
+                    size_t num_field,
                     char *signature);
