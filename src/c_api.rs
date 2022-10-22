@@ -521,6 +521,18 @@ fn_str_pointer!(
     }
 );
 
+fn_str_pointer!(
+    fn computePermissionHash(
+        user_id: c_uint,
+        parent_filepath: *mut c_char,
+    ) -> Result<*mut c_char, SommelierDriveCryptoError> {
+        let parent_filepath = ptr2str(parent_filepath);
+        let hash_bytes = compute_permission_hash(user_id as u64, parent_filepath);
+        let hash_str = serde_json::to_string(&hash_bytes)?;
+        Ok(str2ptr(hash_str))
+    }
+);
+
 fn str2ptr(str: String) -> *mut c_char {
     let c_str = CString::new(str).unwrap();
     c_str.into_raw()
@@ -679,5 +691,17 @@ mod test {
         );
         assert_eq!(verified, 1);
         mem::drop(signature);
+    }
+
+    #[test]
+    fn c_permission_hash_test() {
+        let user_id_1 = 1;
+        let user_id_2 = 2;
+        let parent_filepath = CString::new("/test/filepath_test").unwrap();
+        let hash1 = computePermissionHash(user_id_1, parent_filepath.clone().into_raw());
+        let hash2 = computePermissionHash(user_id_2, parent_filepath.clone().into_raw());
+        let hash1_str = unsafe { CString::from_raw(hash1) };
+        let hash2_str = unsafe { CString::from_raw(hash2) };
+        assert_ne!(hash1_str, hash2_str);
     }
 }

@@ -163,6 +163,13 @@ pub fn decrypt_filepath_ct(
     Ok(filepath)
 }
 
+pub fn compute_permission_hash(user_id: u64, parent_filepath: &str) -> Vec<u8> {
+    let mut hasher = Sha256::new();
+    hasher.update(user_id.to_be_bytes());
+    hasher.update(parent_filepath.as_bytes());
+    hasher.finalize().to_vec()
+}
+
 #[cfg(test)]
 mod test {
     use std::collections::BTreeMap;
@@ -289,5 +296,16 @@ mod test {
         let recovered_shared_key = recover_shared_key(&sks[0], &ct.shared_key_cts[0]).unwrap();
         let contents = decrypt_contents_ct(&recovered_shared_key, &ct.contents_ct).unwrap();
         assert_eq!(text.to_vec(), contents);
+    }
+
+    #[test]
+    fn compute_permission_hash_test() {
+        let user_id_1 = 1;
+        let user_id_2 = 2;
+        let parent_filepath = "/test/filepath_test";
+
+        let hash1 = compute_permission_hash(user_id_1, parent_filepath);
+        let hash2 = compute_permission_hash(user_id_2, parent_filepath);
+        assert_ne!(hash1, hash2);
     }
 }
