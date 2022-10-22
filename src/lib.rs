@@ -264,4 +264,25 @@ mod test {
             verify_signature(&pk, region_name, method, uri, &field_vals, &signature).unwrap();
         assert!(verified);
     }
+
+    #[test]
+    fn large_file_case_test() {
+        let mut rng = OsRng;
+        let num_key = 1;
+        let sks = (0..num_key)
+            .map(|_| pke_gen_secret_key(&mut rng).unwrap())
+            .collect::<Vec<PkeSecretKey>>();
+        let pks = sks
+            .iter()
+            .map(|sk| pke_gen_public_key(sk))
+            .collect::<Vec<PkePublicKey>>();
+
+        let filepath = String::from_utf8([0; 64].to_vec()).unwrap();
+        let text = [1; 1048576 * 2];
+        let ct = encrypt_new_file(&pks, &filepath, &text).unwrap();
+
+        let recovered_shared_key = recover_shared_key(&sks[0], &ct.shared_key_cts[0]).unwrap();
+        let contents = decrypt_contents_ct(&recovered_shared_key, &ct.contents_ct).unwrap();
+        assert_eq!(text.to_vec(), contents);
+    }
 }
