@@ -1,6 +1,7 @@
 use crate::*;
 use core::slice;
 use easy_ffi::easy_ffi;
+use errno::{set_errno, Errno};
 use hex;
 use std::collections::BTreeMap;
 use std::ffi::*;
@@ -8,6 +9,8 @@ use std::mem;
 use std::os::raw::c_char;
 use std::os::raw::c_int;
 use std::ptr;
+
+const EINVAL: i32 = 22;
 
 #[repr(C)]
 #[derive(Debug, Clone)]
@@ -243,9 +246,11 @@ pub struct CContentsBytes {
 
 easy_ffi!(fn_str_pointer =>
     |err| {
+        set_errno(Errno(EINVAL));
         return ptr::null_mut()
     }
     |panic_val| {
+        set_errno(Errno(EINVAL));
         match panic_val.downcast_ref::<&'static str>() {
             Some(s) => panic!("sommelier-drive-cryptos-panic: {}",s),
             None => panic!("sommelier-drive-cryptos-panic without an error message"),
@@ -308,9 +313,11 @@ fn_str_pointer!(
 
 easy_ffi!(fn_permission_int_pointer =>
     |err| {
+        set_errno(Errno(EINVAL));
         return -1;
     }
     |panic_val| {
+        set_errno(Errno(EINVAL));
         match panic_val.downcast_ref::<&'static str>() {
             Some(s) => panic!("sommelier-drive-cryptos-panic: {}",s),
             None => panic!("sommelier-drive-cryptos-panic without an error message"),
@@ -359,9 +366,11 @@ fn_permission_int_pointer!(
 
 easy_ffi!(fn_file_ct_pointer =>
     |err| {
+        set_errno(Errno(EINVAL));
         return CFileCT::default();
     }
     |panic_val| {
+        set_errno(Errno(EINVAL));
         match panic_val.downcast_ref::<&'static str>() {
             Some(s) => panic!("sommelier-drive-cryptos-panic: {}",s),
             None => panic!("sommelier-drive-cryptos-panic without an error message"),
@@ -391,9 +400,11 @@ fn_file_ct_pointer!(
 
 easy_ffi!(fn_recovered_shared_key_pointer =>
     |err| {
+        set_errno(Errno(EINVAL));
         return CRecoveredSharedKey::default();
     }
     |panic_val| {
+        set_errno(Errno(EINVAL));
         match panic_val.downcast_ref::<&'static str>() {
             Some(s) => panic!("sommelier-drive-cryptos-panic: {}",s),
             None => panic!("sommelier-drive-cryptos-panic without an error message"),
@@ -415,12 +426,14 @@ fn_recovered_shared_key_pointer!(
 
 easy_ffi!(fn_contents_bytes_pointer =>
     |err| {
+        set_errno(Errno(EINVAL));
         return CContentsBytes {
             ptr: ptr::null(),
             len: 0
         }
     }
     |panic_val| {
+        set_errno(Errno(EINVAL));
         match panic_val.downcast_ref::<&'static str>() {
             Some(s) => panic!("sommelier-drive-cryptos-panic: {}",s),
             None => panic!("sommelier-drive-cryptos-panic without an error message"),
@@ -450,9 +463,11 @@ fn_contents_bytes_pointer!(
 
 easy_ffi!(fn_permission_ct_pointer =>
     |err| {
+        set_errno(Errno(EINVAL));
         return CPermissionCT::default();
     }
     |panic_val| {
+        set_errno(Errno(EINVAL));
         match panic_val.downcast_ref::<&'static str>() {
             Some(s) => panic!("sommelier-drive-cryptos-panic: {}",s),
             None => panic!("sommelier-drive-cryptos-panic without an error message"),
@@ -488,9 +503,11 @@ fn_permission_ct_pointer!(
 
 easy_ffi!(fn_filepath_ct_pointer =>
     |err| {
+        set_errno(Errno(EINVAL));
         return CFilePathCT::default();
     }
     |panic_val| {
+        set_errno(Errno(EINVAL));
         match panic_val.downcast_ref::<&'static str>() {
             Some(s) => panic!("sommelier-drive-cryptos-panic: {}",s),
             None => panic!("sommelier-drive-cryptos-panic without an error message"),
