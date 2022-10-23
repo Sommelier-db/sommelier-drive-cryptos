@@ -4,6 +4,7 @@ mod c_api;
 mod pk_signature;
 mod pke;
 mod ske;
+mod traits;
 use std::string::FromUtf8Error;
 
 use aes_gcm::aead::OsRng;
@@ -15,6 +16,7 @@ pub use pk_signature::*;
 pub use pke::*;
 use sha2::{Digest, Sha256};
 pub use ske::*;
+pub use traits::{HexString, JsonString};
 
 use hex;
 use rsa::{rand_core::RngCore, RsaPrivateKey, RsaPublicKey};
@@ -41,52 +43,39 @@ pub enum SommelierDriveCryptoError {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PkeSecretKey(RsaPrivateKey);
 
-impl TryFrom<String> for PkeSecretKey {
-    type Error = SommelierDriveCryptoError;
-    fn try_from(value: String) -> Result<Self, Self::Error> {
-        Ok(serde_json::from_str(&value)?)
+impl JsonString for PkeSecretKey {
+    fn from_str(value: &str) -> Result<Self, SommelierDriveCryptoError> {
+        Ok(serde_json::from_str(value)?)
     }
-}
 
-impl TryInto<String> for PkeSecretKey {
-    type Error = SommelierDriveCryptoError;
-    fn try_into(self) -> Result<String, Self::Error> {
-        let str = serde_json::to_string(&self)?;
-        Ok(str)
+    fn to_string(&self) -> Result<String, SommelierDriveCryptoError> {
+        Ok(serde_json::to_string(self)?)
     }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PkePublicKey(RsaPublicKey);
 
-impl TryFrom<String> for PkePublicKey {
-    type Error = SommelierDriveCryptoError;
-    fn try_from(value: String) -> Result<Self, Self::Error> {
-        Ok(serde_json::from_str(&value)?)
+impl JsonString for PkePublicKey {
+    fn from_str(value: &str) -> Result<Self, SommelierDriveCryptoError> {
+        Ok(serde_json::from_str(value)?)
     }
-}
 
-impl TryInto<String> for PkePublicKey {
-    type Error = SommelierDriveCryptoError;
-    fn try_into(self) -> Result<String, Self::Error> {
-        let str = serde_json::to_string(&self)?;
-        Ok(str)
+    fn to_string(&self) -> Result<String, SommelierDriveCryptoError> {
+        Ok(serde_json::to_string(self)?)
     }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SymmetricKey(Vec<u8>);
 
-impl TryFrom<String> for SymmetricKey {
-    type Error = SommelierDriveCryptoError;
-    fn try_from(value: String) -> Result<Self, Self::Error> {
+impl HexString for SymmetricKey {
+    fn from_str(value: &str) -> Result<Self, SommelierDriveCryptoError> {
         let bytes = hex::decode(value)?;
         Ok(Self(bytes))
     }
-}
 
-impl Into<String> for SymmetricKey {
-    fn into(self) -> String {
+    fn to_string(&self) -> String {
         hex::encode(&self.0)
     }
 }
@@ -112,43 +101,43 @@ pub struct RecoveredSharedKey {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct FilePathCT {
-    ct: Vec<u8>,
-}
+pub struct FilePathCT(Vec<u8>);
 
-impl TryFrom<String> for FilePathCT {
-    type Error = SommelierDriveCryptoError;
-    fn try_from(value: String) -> Result<Self, Self::Error> {
-        let ct = hex::decode(value)?;
-        Ok(Self { ct })
+impl HexString for FilePathCT {
+    fn from_str(value: &str) -> Result<Self, SommelierDriveCryptoError> {
+        let bytes = hex::decode(value)?;
+        Ok(Self(bytes))
     }
-}
 
-impl Into<String> for FilePathCT {
-    fn into(self) -> String {
-        hex::encode(&self.ct)
+    fn to_string(&self) -> String {
+        hex::encode(&self.0)
     }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct HashDigest(Vec<u8>);
 
-impl TryFrom<String> for HashDigest {
+impl TryFrom<&str> for HashDigest {
     type Error = SommelierDriveCryptoError;
-    fn try_from(value: String) -> Result<Self, Self::Error> {
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
         let bytes = hex::decode(value)?;
         Ok(Self(bytes))
     }
 }
 
-impl Into<String> for HashDigest {
-    fn into(self) -> String {
+impl HexString for HashDigest {
+    fn from_str(value: &str) -> Result<Self, SommelierDriveCryptoError> {
+        let bytes = hex::decode(value)?;
+        Ok(Self(bytes))
+    }
+
+    fn to_string(&self) -> String {
         hex::encode(&self.0)
     }
 }
 
 impl HashDigest {
-    const SIZE: usize = 32;
+    pub const SIZE: usize = 32;
     fn from_bytes(bytes: &[u8]) -> Self {
         Self(bytes.to_vec())
     }
@@ -235,7 +224,7 @@ pub fn encrypt_filepath(
 ) -> Result<FilePathCT, SommelierDriveCryptoError> {
     let mut rng = OsRng;
     let ct = pke_encrypt(pk, filepath.as_bytes(), &mut rng)?;
-    let ct = FilePathCT { ct };
+    let ct = FilePathCT(ct);
     Ok(ct)
 }
 
@@ -243,7 +232,7 @@ pub fn decrypt_filepath_ct(
     sk: &PkeSecretKey,
     ct: &FilePathCT,
 ) -> Result<String, SommelierDriveCryptoError> {
-    let plaintext = pke_decrypt(sk, &ct.ct)?;
+    let plaintext = pke_decrypt(sk, &ct.0)?;
     let filepath = String::from_utf8(plaintext)?;
     Ok(filepath)
 }

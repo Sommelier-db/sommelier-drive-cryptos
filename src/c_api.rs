@@ -27,8 +27,8 @@ impl Default for CFileCT {
             num_cts: 0,
             shared_key_cts,
             filepath_cts,
-            shared_key_hash: str2ptr(String::new()),
-            contents_ct: str2ptr(String::new()),
+            shared_key_hash: ptr::null_mut(),
+            contents_ct: ptr::null_mut(),
         }
     }
 }
@@ -53,8 +53,8 @@ impl TryFrom<FileCT> for CFileCT {
         filepath_cts_vec.shrink_to_fit();
         let filepath_cts = filepath_cts_vec.as_mut_ptr();
         mem::forget(filepath_cts_vec);
-        let shared_key_hash = str2ptr(hex::encode(&value.shared_key_hash.0));
-        let contents_ct = str2ptr(hex::encode(&value.contents_ct));
+        let shared_key_hash = str2ptr(&hex::encode(&value.shared_key_hash.0));
+        let contents_ct = str2ptr(&hex::encode(&value.contents_ct));
         Ok(Self {
             num_cts,
             shared_key_cts,
@@ -79,7 +79,7 @@ impl TryInto<FileCT> for CFileCT {
             .into_iter()
             .map(|ct| ct.clone().try_into())
             .collect::<Result<_, _>>()?;
-        let shared_key_hash = HashDigest::try_from(ptr2str(self.shared_key_hash).to_string())?;
+        let shared_key_hash = HashDigest::try_from(ptr2str(self.shared_key_hash))?;
         let contents_ct = hex::decode(ptr2str(self.contents_ct))?;
         Ok(FileCT {
             shared_key_cts,
@@ -149,8 +149,8 @@ impl Default for CRecoveredSharedKey {
 impl TryFrom<RecoveredSharedKey> for CRecoveredSharedKey {
     type Error = SommelierDriveCryptoError;
     fn try_from(value: RecoveredSharedKey) -> Result<Self, Self::Error> {
-        let shared_key = str2ptr(value.shared_key.into());
-        let shared_key_hash = str2ptr(value.shared_key_hash.into());
+        let shared_key = str2ptr(value.shared_key.to_string().as_str());
+        let shared_key_hash = str2ptr(value.shared_key_hash.to_string().as_str());
         Ok(Self {
             shared_key,
             shared_key_hash,
@@ -161,8 +161,8 @@ impl TryFrom<RecoveredSharedKey> for CRecoveredSharedKey {
 impl TryInto<RecoveredSharedKey> for CRecoveredSharedKey {
     type Error = SommelierDriveCryptoError;
     fn try_into(self) -> Result<RecoveredSharedKey, Self::Error> {
-        let shared_key = SymmetricKey::try_from(ptr2str(self.shared_key).to_string())?;
-        let shared_key_hash = HashDigest::try_from(ptr2str(self.shared_key_hash).to_string())?;
+        let shared_key = SymmetricKey::from_str(ptr2str(self.shared_key))?;
+        let shared_key_hash = HashDigest::from_str(ptr2str(self.shared_key_hash))?;
         Ok(RecoveredSharedKey {
             shared_key,
             shared_key_hash,
@@ -188,7 +188,7 @@ impl TryFrom<Vec<u8>> for CSharedKeyCT {
     type Error = SommelierDriveCryptoError;
     fn try_from(value: Vec<u8>) -> Result<Self, Self::Error> {
         Ok(Self {
-            ptr: str2ptr(hex::encode(&value)),
+            ptr: str2ptr(&hex::encode(&value)),
         })
     }
 }
@@ -219,9 +219,8 @@ impl Default for CFilePathCT {
 impl TryFrom<FilePathCT> for CFilePathCT {
     type Error = SommelierDriveCryptoError;
     fn try_from(value: FilePathCT) -> Result<Self, Self::Error> {
-        let s: String = value.clone().into();
         Ok(Self {
-            ptr: str2ptr(value.into()),
+            ptr: str2ptr(value.to_string().as_str()),
         })
     }
 }
@@ -230,7 +229,7 @@ impl TryInto<FilePathCT> for CFilePathCT {
     type Error = SommelierDriveCryptoError;
     fn try_into(self) -> Result<FilePathCT, Self::Error> {
         let str = ptr2str(self.ptr);
-        let ct = FilePathCT::try_from(str.to_string())?;
+        let ct = FilePathCT::from_str(str)?;
         Ok(ct)
     }
 }
@@ -244,7 +243,7 @@ pub struct CContentsBytes {
 
 easy_ffi!(fn_str_pointer =>
     |err| {
-        return str2ptr(String::new())
+        return ptr::null_mut()
     }
     |panic_val| {
         match panic_val.downcast_ref::<&'static str>() {
@@ -258,17 +257,17 @@ fn_str_pointer!(
     fn pkeGenSecretKey() -> Result<*mut c_char, SommelierDriveCryptoError> {
         let mut rng = OsRng;
         let sk = pke_gen_secret_key(&mut rng)?;
-        let sk_str = sk.try_into()?;
-        Ok(str2ptr(sk_str))
+        let sk_str = sk.to_string()?;
+        Ok(str2ptr(sk_str.as_str()))
     }
 );
 
 fn_str_pointer!(
     fn pkeGenPublicKey(sk: *mut c_char) -> Result<*mut c_char, SommelierDriveCryptoError> {
-        let sk = PkeSecretKey::try_from(ptr2str(sk).to_string())?;
+        let sk = PkeSecretKey::from_str(ptr2str(sk))?;
         let pk = pke_gen_public_key(&sk);
-        let pk_str = pk.try_into()?;
-        Ok(str2ptr(pk_str))
+        let pk_str = pk.to_string()?;
+        Ok(str2ptr(pk_str.as_str()))
     }
 );
 
@@ -282,7 +281,7 @@ fn_str_pointer!(
         vals: *mut *mut c_char,
         num_field: usize,
     ) -> Result<*mut c_char, SommelierDriveCryptoError> {
-        let sk = PkeSecretKey::try_from(ptr2str(sk).to_string())?;
+        let sk = PkeSecretKey::from_str(ptr2str(sk))?;
         let region_name = ptr2str(region_name);
         let method = ptr2str(method);
         let uri = ptr2str(uri);
@@ -302,8 +301,8 @@ fn_str_pointer!(
         }
         let mut rng = OsRng;
         let signature = gen_signature(&sk, region_name, method, uri, field_vals, &mut rng);
-        let sign_str = serde_json::to_string(&signature)?;
-        Ok(str2ptr(sign_str))
+        let sign_str = hex::encode(&signature);
+        Ok(str2ptr(sign_str.as_str()))
     }
 );
 
@@ -330,7 +329,7 @@ fn_permission_int_pointer!(
         num_field: usize,
         signature: *mut c_char,
     ) -> Result<c_int, SommelierDriveCryptoError> {
-        let pk = PkePublicKey::try_from(ptr2str(pk).to_string())?;
+        let pk = PkePublicKey::from_str(ptr2str(pk))?;
         let region_name = ptr2str(region_name);
         let method = ptr2str(method);
         let uri = ptr2str(uri);
@@ -348,7 +347,7 @@ fn_permission_int_pointer!(
         for (field, val) in fields.into_iter().zip(vals) {
             field_vals.insert(field, val);
         }
-        let signature = serde_json::from_str::<Vec<u8>>(ptr2str(signature))?;
+        let signature = hex::decode(ptr2str(signature))?;
         let verified = verify_signature(&pk, region_name, method, uri, field_vals, &signature)?;
         if verified {
             Ok(1)
@@ -380,7 +379,7 @@ fn_file_ct_pointer!(
         let pks_slice = unsafe { slice::from_raw_parts_mut(pks, num_pk) };
         let pks: Vec<PkePublicKey> = pks_slice
             .into_iter()
-            .map(|ptr| PkePublicKey::try_from(ptr2str(*ptr).to_string()))
+            .map(|ptr| PkePublicKey::from_str(ptr2str(*ptr)))
             .collect::<Result<_, _>>()?;
         let filepath = ptr2str(filepath);
         let contents_bytes = unsafe { slice::from_raw_parts(contents.ptr, contents.len) };
@@ -407,7 +406,7 @@ fn_recovered_shared_key_pointer!(
         sk: *mut c_char,
         ct: CSharedKeyCT,
     ) -> Result<CRecoveredSharedKey, SommelierDriveCryptoError> {
-        let sk = PkeSecretKey::try_from(ptr2str(sk).to_string())?;
+        let sk = PkeSecretKey::from_str(ptr2str(sk))?;
         let ct: Vec<u8> = ct.try_into()?;
         let recovered_shared_key = recover_shared_key(&sk, &ct)?;
         Ok(recovered_shared_key.try_into()?)
@@ -469,7 +468,7 @@ fn_str_pointer!(
         let recovered_shared_key = recovered_shared_key.try_into()?;
         let contents_bytes = unsafe { slice::from_raw_parts(contents.ptr, contents.len) };
         let contents_ct = encrypt_new_file_with_shared_key(&recovered_shared_key, &contents_bytes)?;
-        Ok(str2ptr(hex::encode(&contents_ct)))
+        Ok(str2ptr(hex::encode(&contents_ct).as_str()))
     }
 );
 
@@ -479,7 +478,7 @@ fn_permission_ct_pointer!(
         recovered_shared_key: CRecoveredSharedKey,
         filepath: *mut c_char,
     ) -> Result<CPermissionCT, SommelierDriveCryptoError> {
-        let pk = PkePublicKey::try_from(ptr2str(pk).to_string())?;
+        let pk = PkePublicKey::from_str(ptr2str(pk))?;
         let recovered_shared_key = recovered_shared_key.try_into()?;
         let filepath = ptr2str(filepath);
         let permission_ct = add_permission(&pk, &recovered_shared_key, filepath)?;
@@ -504,7 +503,7 @@ fn_filepath_ct_pointer!(
         pk: *mut c_char,
         filepath: *mut c_char,
     ) -> Result<CFilePathCT, SommelierDriveCryptoError> {
-        let pk = PkePublicKey::try_from(ptr2str(pk).to_string())?;
+        let pk = PkePublicKey::from_str(ptr2str(pk))?;
         let filepath = ptr2str(filepath);
         let ct = encrypt_filepath(&pk, filepath)?;
         Ok(ct.try_into()?)
@@ -516,10 +515,10 @@ fn_str_pointer!(
         sk: *mut c_char,
         ct: CFilePathCT,
     ) -> Result<*mut c_char, SommelierDriveCryptoError> {
-        let sk = PkeSecretKey::try_from(ptr2str(sk).to_string())?;
+        let sk = PkeSecretKey::from_str(ptr2str(sk))?;
         let ct = ct.try_into()?;
         let filepath = decrypt_filepath_ct(&sk, &ct)?;
-        Ok(str2ptr(filepath))
+        Ok(str2ptr(filepath.as_str()))
     }
 );
 
@@ -530,12 +529,12 @@ fn_str_pointer!(
     ) -> Result<*mut c_char, SommelierDriveCryptoError> {
         let parent_filepath = ptr2str(parent_filepath);
         let hash_bytes = compute_permission_hash(user_id as u64, parent_filepath);
-        let hash_str = hash_bytes.into();
-        Ok(str2ptr(hash_str))
+        let hash_str = hash_bytes.to_string();
+        Ok(str2ptr(hash_str.as_str()))
     }
 );
 
-fn str2ptr(str: String) -> *mut c_char {
+fn str2ptr(str: &str) -> *mut c_char {
     let c_str = CString::new(str).unwrap();
     c_str.into_raw()
 }
