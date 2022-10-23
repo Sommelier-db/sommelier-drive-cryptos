@@ -82,22 +82,22 @@ impl HexString for SymmetricKey {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FileCT {
-    shared_key_cts: Vec<Vec<u8>>,
-    filepath_cts: Vec<FilePathCT>,
-    shared_key_hash: HashDigest,
-    contents_ct: Vec<u8>,
+    pub shared_key_cts: Vec<Vec<u8>>,
+    pub filepath_cts: Vec<FilePathCT>,
+    pub shared_key_hash: HashDigest,
+    pub contents_ct: Vec<u8>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PermissionCT {
-    shared_key_ct: Vec<u8>,
-    filepath_ct: FilePathCT,
+    pub shared_key_ct: Vec<u8>,
+    pub filepath_ct: FilePathCT,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RecoveredSharedKey {
-    shared_key: SymmetricKey,
-    shared_key_hash: HashDigest,
+    pub shared_key: SymmetricKey,
+    pub shared_key_hash: HashDigest,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
