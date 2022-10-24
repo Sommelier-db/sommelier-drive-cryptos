@@ -95,12 +95,12 @@ impl TryInto<FileCT> for CFileCT {
 
 #[repr(C)]
 #[derive(Debug, Clone)]
-pub struct CPermissionCT {
+pub struct CReadPermissionCT {
     pub shared_key_ct: CSharedKeyCT,
     pub filepath_ct: CFilePathCT,
 }
 
-impl Default for CPermissionCT {
+impl Default for CReadPermissionCT {
     fn default() -> Self {
         Self {
             shared_key_ct: CSharedKeyCT::default(),
@@ -109,9 +109,9 @@ impl Default for CPermissionCT {
     }
 }
 
-impl TryFrom<PermissionCT> for CPermissionCT {
+impl TryFrom<ReadPermissionCT> for CReadPermissionCT {
     type Error = SommelierDriveCryptoError;
-    fn try_from(value: PermissionCT) -> Result<Self, Self::Error> {
+    fn try_from(value: ReadPermissionCT) -> Result<Self, Self::Error> {
         let shared_key_ct = value.shared_key_ct.try_into()?;
         let filepath_ct = value.filepath_ct.try_into()?;
         Ok(Self {
@@ -121,12 +121,12 @@ impl TryFrom<PermissionCT> for CPermissionCT {
     }
 }
 
-impl TryInto<PermissionCT> for CPermissionCT {
+impl TryInto<ReadPermissionCT> for CReadPermissionCT {
     type Error = SommelierDriveCryptoError;
-    fn try_into(self) -> Result<PermissionCT, Self::Error> {
+    fn try_into(self) -> Result<ReadPermissionCT, Self::Error> {
         let shared_key_ct = self.shared_key_ct.try_into()?;
         let filepath_ct = self.filepath_ct.try_into()?;
-        Ok(PermissionCT {
+        Ok(ReadPermissionCT {
             shared_key_ct,
             filepath_ct,
         })
@@ -197,6 +197,38 @@ impl TryFrom<Vec<u8>> for CSharedKeyCT {
 }
 
 impl TryInto<Vec<u8>> for CSharedKeyCT {
+    type Error = SommelierDriveCryptoError;
+    fn try_into(self) -> Result<Vec<u8>, Self::Error> {
+        let str = ptr2str(self.ptr);
+        let vec = hex::decode(str)?;
+        Ok(vec)
+    }
+}
+
+#[repr(C)]
+#[derive(Debug, Clone)]
+pub struct CAuthorizationSeedCT {
+    pub ptr: *mut c_char,
+}
+
+impl Default for CAuthorizationSeedCT {
+    fn default() -> Self {
+        Self {
+            ptr: ptr::null_mut(),
+        }
+    }
+}
+
+impl TryFrom<Vec<u8>> for CAuthorizationSeedCT {
+    type Error = SommelierDriveCryptoError;
+    fn try_from(value: Vec<u8>) -> Result<Self, Self::Error> {
+        Ok(Self {
+            ptr: str2ptr(&hex::encode(&value)),
+        })
+    }
+}
+
+impl TryInto<Vec<u8>> for CAuthorizationSeedCT {
     type Error = SommelierDriveCryptoError;
     fn try_into(self) -> Result<Vec<u8>, Self::Error> {
         let str = ptr2str(self.ptr);
@@ -469,7 +501,7 @@ fn_contents_bytes_pointer!(
 easy_ffi!(fn_permission_ct_pointer =>
     |err| {
         set_errno(Errno(EINVAL));
-        return CPermissionCT::default();
+        return CReadPermissionCT::default();
     }
     |panic_val| {
         set_errno(Errno(EINVAL));
@@ -497,11 +529,11 @@ fn_permission_ct_pointer!(
         pk: *mut c_char,
         recovered_shared_key: CRecoveredSharedKey,
         filepath: *mut c_char,
-    ) -> Result<CPermissionCT, SommelierDriveCryptoError> {
+    ) -> Result<CReadPermissionCT, SommelierDriveCryptoError> {
         let pk = PkePublicKey::from_str(ptr2str(pk))?;
         let recovered_shared_key = recovered_shared_key.try_into()?;
         let filepath = ptr2str(filepath);
-        let permission_ct = add_permission(&pk, &recovered_shared_key, filepath)?;
+        let permission_ct = add_read_permission(&pk, &recovered_shared_key, filepath)?;
         Ok(permission_ct.try_into()?)
     }
 );

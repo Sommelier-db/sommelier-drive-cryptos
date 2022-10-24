@@ -16,6 +16,7 @@ easy_ffi = {version = "0.1.0", git = "https://github.com/SoraSuegami/easy_ffi.gi
 getrandom = { version = "0.2", features = ["js"] }
 hex = {version = "0.4.3"}
 errno = {version = "0.2.8", optional = true}
+rand_chacha = "0.3.1"
 
 [dev-dependencies]
 rand = "0.7.0"
@@ -30,3 +31,4 @@ crate-type = ["rlib","cdylib"]
 [features]
 default = ["c_api"]
 c_api = ["easy_ffi", "errno"]
+

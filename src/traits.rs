@@ -5,7 +5,7 @@ pub trait HexString: Sized {
     fn to_string(&self) -> String;
 }
 
-pub trait JsonString: Sized {
+pub trait PemString: Sized {
     fn from_str(value: &str) -> Result<Self, SommelierDriveCryptoError>;
     fn to_string(&self) -> Result<String, SommelierDriveCryptoError>;
 }

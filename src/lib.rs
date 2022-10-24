@@ -1,5 +1,5 @@
-#[cfg(feature = "c_api")]
-mod c_api;
+/*#[cfg(feature = "c_api")]
+mod c_api;*/
 
 mod pk_signature;
 mod pke;
@@ -9,19 +9,25 @@ use std::string::FromUtf8Error;
 
 use aes_gcm::aead::OsRng;
 
-#[cfg(feature = "c_api")]
-pub use c_api::*;
+/*#[cfg(feature = "c_api")]
+pub use c_api::*;*/
 
 pub use pk_signature::*;
 pub use pke::*;
 use sha2::{Digest, Sha256};
 pub use ske::*;
-pub use traits::{HexString, JsonString};
+pub use traits::{HexString, PemString};
 
 use hex;
-use rsa::{rand_core::RngCore, RsaPrivateKey, RsaPublicKey};
+use rsa::{
+    pkcs8,
+    pkcs8::{DecodePrivateKey, DecodePublicKey, EncodePrivateKey, EncodePublicKey, LineEnding},
+    rand_core::{RngCore, SeedableRng},
+    RsaPrivateKey, RsaPublicKey,
+};
 use serde::{Deserialize, Serialize};
-use serde_json;
+//use serde_json;
+use rand_chacha::ChaCha20Rng;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -35,38 +41,44 @@ pub enum SommelierDriveCryptoError {
     #[error(transparent)]
     Utf8Error(#[from] FromUtf8Error),
     #[error(transparent)]
-    JsonStringError(#[from] serde_json::Error),
-    #[error(transparent)]
     HexError(#[from] hex::FromHexError),
+    #[error(transparent)]
+    Pkcs8Error(#[from] pkcs8::Error),
+    #[error(transparent)]
+    Pkcs8SpkiError(#[from] pkcs8::spki::Error),
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct PkeSecretKey(RsaPrivateKey);
 
-impl JsonString for PkeSecretKey {
+impl PemString for PkeSecretKey {
     fn from_str(value: &str) -> Result<Self, SommelierDriveCryptoError> {
-        Ok(serde_json::from_str(value)?)
+        let sk = RsaPrivateKey::from_pkcs8_pem(value)?;
+        Ok(Self(sk))
     }
 
     fn to_string(&self) -> Result<String, SommelierDriveCryptoError> {
-        Ok(serde_json::to_string(self)?)
+        let pem = self.0.to_pkcs8_pem(LineEnding::default())?;
+        Ok(pem.to_string())
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct PkePublicKey(RsaPublicKey);
 
-impl JsonString for PkePublicKey {
+impl PemString for PkePublicKey {
     fn from_str(value: &str) -> Result<Self, SommelierDriveCryptoError> {
-        Ok(serde_json::from_str(value)?)
+        let pk = RsaPublicKey::from_public_key_pem(value)?;
+        Ok(Self(pk))
     }
 
     fn to_string(&self) -> Result<String, SommelierDriveCryptoError> {
-        Ok(serde_json::to_string(self)?)
+        let pem = self.0.to_public_key_pem(LineEnding::default())?;
+        Ok(pem.to_string())
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct SymmetricKey(Vec<u8>);
 
 impl HexString for SymmetricKey {
@@ -80,7 +92,13 @@ impl HexString for SymmetricKey {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+impl SymmetricKey {
+    pub const BYTE_SIZE: usize = 16;
+}
+
+pub type AuthorizationSeed = <ChaCha20Rng as SeedableRng>::Seed;
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct FileCT {
     pub shared_key_cts: Vec<Vec<u8>>,
     pub filepath_cts: Vec<FilePathCT>,
@@ -88,19 +106,33 @@ pub struct FileCT {
     pub contents_ct: Vec<u8>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct PermissionCT {
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ReadPermissionCT {
     pub shared_key_ct: Vec<u8>,
     pub filepath_ct: FilePathCT,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct RecoveredSharedKey {
     pub shared_key: SymmetricKey,
     pub shared_key_hash: HashDigest,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct AuthorizationSeedCT(Vec<u8>);
+
+impl HexString for AuthorizationSeedCT {
+    fn from_str(value: &str) -> Result<Self, SommelierDriveCryptoError> {
+        let bytes = hex::decode(value)?;
+        Ok(Self(bytes))
+    }
+
+    fn to_string(&self) -> String {
+        hex::encode(&self.0)
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct FilePathCT(Vec<u8>);
 
 impl HexString for FilePathCT {
@@ -203,19 +235,36 @@ pub fn encrypt_new_file_with_shared_key(
     Ok(contents_ct)
 }
 
-pub fn add_permission(
+pub fn add_read_permission(
     pk: &PkePublicKey,
     recovered_shared_key: &RecoveredSharedKey,
     filepath: &str,
-) -> Result<PermissionCT, SommelierDriveCryptoError> {
+) -> Result<ReadPermissionCT, SommelierDriveCryptoError> {
     let mut rng = OsRng;
     let shared_key_ct = pke_encrypt(pk, &recovered_shared_key.shared_key.0, &mut rng)?;
     let filepath_ct = encrypt_filepath(pk, filepath)?;
-    let shared_key_ct = PermissionCT {
+    let shared_key_ct = ReadPermissionCT {
         shared_key_ct,
         filepath_ct,
     };
     Ok(shared_key_ct)
+}
+
+pub fn encrypt_authorization_seed(
+    pk: &PkePublicKey,
+    authorization_seed: AuthorizationSeed,
+) -> Result<AuthorizationSeedCT, SommelierDriveCryptoError> {
+    let mut rng = OsRng;
+    let ct = pke_encrypt(pk, &authorization_seed, &mut rng)?;
+    Ok(AuthorizationSeedCT(ct))
+}
+
+pub fn decrypt_authorization_seed_ct(
+    sk: &PkeSecretKey,
+    authorization_seed_ct: &AuthorizationSeedCT,
+) -> Result<AuthorizationSeed, SommelierDriveCryptoError> {
+    let authorization_seed = pke_decrypt(sk, &authorization_seed_ct.0)?;
+    Ok(authorization_seed.try_into().unwrap())
 }
 
 pub fn encrypt_filepath(
@@ -291,7 +340,7 @@ mod test {
     }
 
     #[test]
-    fn permission_test() {
+    fn read_permission_test() {
         let mut rng = OsRng;
         let sk = pke_gen_secret_key(&mut rng).unwrap();
         let pk = pke_gen_public_key(&sk);
@@ -304,13 +353,29 @@ mod test {
 
         let new_sk = pke_gen_secret_key(&mut rng).unwrap();
         let new_pk = pke_gen_public_key(&new_sk);
-        let new_permission = add_permission(&new_pk, &recovered_shared_key, filepath).unwrap();
+        let new_permission = add_read_permission(&new_pk, &recovered_shared_key, filepath).unwrap();
         let recovered_shared_key =
             recover_shared_key(&new_sk, &new_permission.shared_key_ct).unwrap();
         let contents = decrypt_contents_ct(&recovered_shared_key, &ct.contents_ct).unwrap();
         assert_eq!(text, contents);
         let recovered_filepath = decrypt_filepath_ct(&new_sk, &new_permission.filepath_ct).unwrap();
         assert_eq!(filepath, &recovered_filepath);
+    }
+
+    #[test]
+    fn authorization_seed_test() {
+        let mut rng = OsRng;
+        let sk = pke_gen_secret_key(&mut rng).unwrap();
+        let pk = pke_gen_public_key(&sk);
+
+        let mut authorization_seed = [0; 32];
+        rng.fill_bytes(&mut authorization_seed);
+        let derived_sk = pke_derive_secret_key_from_seeed(authorization_seed.clone()).unwrap();
+        let ct = encrypt_authorization_seed(&pk, authorization_seed.clone()).unwrap();
+        let recovered_seed = decrypt_authorization_seed_ct(&sk, &ct).unwrap();
+        let recovered_sk = pke_derive_secret_key_from_seeed(recovered_seed.clone()).unwrap();
+        assert_eq!(authorization_seed, recovered_seed);
+        assert_eq!(derived_sk, recovered_sk);
     }
 
     #[test]
