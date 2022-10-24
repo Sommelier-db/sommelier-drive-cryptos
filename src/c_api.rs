@@ -282,6 +282,7 @@ fn_str_pointer!(
         region_name: *mut c_char,
         method: *mut c_char,
         uri: *mut c_char,
+        nonce: c_int,
         fields: *mut *mut c_char,
         vals: *mut *mut c_char,
         num_field: usize,
@@ -290,6 +291,7 @@ fn_str_pointer!(
         let region_name = ptr2str(region_name);
         let method = ptr2str(method);
         let uri = ptr2str(uri);
+        let nonce = nonce as u64;
         let fields_slice = unsafe { slice::from_raw_parts_mut(fields, num_field) };
         let fields = fields_slice
             .into_iter()
@@ -305,7 +307,7 @@ fn_str_pointer!(
             field_vals.insert(field, val);
         }
         let mut rng = OsRng;
-        let signature = gen_signature(&sk, region_name, method, uri, field_vals, &mut rng);
+        let signature = gen_signature(&sk, region_name, method, uri, nonce, field_vals, &mut rng);
         let sign_str = hex::encode(&signature);
         Ok(str2ptr(sign_str.as_str()))
     }
@@ -331,6 +333,7 @@ fn_permission_int_pointer!(
         region_name: *mut c_char,
         method: *mut c_char,
         uri: *mut c_char,
+        nonce: c_int,
         fields: *mut *mut c_char,
         vals: *mut *mut c_char,
         num_field: usize,
@@ -340,6 +343,7 @@ fn_permission_int_pointer!(
         let region_name = ptr2str(region_name);
         let method = ptr2str(method);
         let uri = ptr2str(uri);
+        let nonce = nonce as u64;
         let fields_slice = unsafe { slice::from_raw_parts_mut(fields, num_field) };
         let fields = fields_slice
             .into_iter()
@@ -355,7 +359,8 @@ fn_permission_int_pointer!(
             field_vals.insert(field, val);
         }
         let signature = hex::decode(ptr2str(signature))?;
-        let verified = verify_signature(&pk, region_name, method, uri, field_vals, &signature)?;
+        let verified =
+            verify_signature(&pk, region_name, method, uri, nonce, field_vals, &signature)?;
         if verified {
             Ok(1)
         } else {
@@ -667,6 +672,7 @@ mod test {
         let region_name = CString::new("sign_test").unwrap();
         let method = CString::new("POST").unwrap();
         let uri = CString::new("/user").unwrap();
+        let nonce = 1 as c_int;
         let mut fields = vec![
             CString::new("dataPK").unwrap().into_raw(),
             CString::new("keywordPK").unwrap().into_raw(),
@@ -682,6 +688,7 @@ mod test {
             region_name.clone().into_raw(),
             method.clone().into_raw(),
             uri.clone().into_raw(),
+            nonce,
             fields,
             vals,
             2,
@@ -702,6 +709,7 @@ mod test {
             region_name.clone().into_raw(),
             method.clone().into_raw(),
             uri.clone().into_raw(),
+            nonce,
             fields,
             vals,
             2,

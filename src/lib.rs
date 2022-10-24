@@ -334,13 +334,14 @@ mod test {
         let region_name = "sign_test";
         let method = "POST";
         let uri = "/user";
+        let nonce = 1;
         let fields = vec!["dataPK", "keywordPK"];
         let vals = vec!["pkd---", "pkw---"];
         let mut field_vals = BTreeMap::new();
         for (field, val) in fields.into_iter().zip(vals) {
             field_vals.insert(field, val);
         }
-        let signature = gen_signature(&sk, region_name, method, uri, field_vals, &mut rng);
+        let signature = gen_signature(&sk, region_name, method, uri, nonce, field_vals, &mut rng);
 
         let fields = vec!["keywordPK", "dataPK"];
         let vals = vec!["pkw---", "pkd---"];
@@ -349,7 +350,7 @@ mod test {
             field_vals.insert(field, val);
         }
         let verified =
-            verify_signature(&pk, region_name, method, uri, field_vals, &signature).unwrap();
+            verify_signature(&pk, region_name, method, uri, nonce, field_vals, &signature).unwrap();
         assert!(verified);
     }
 

@@ -19,11 +19,12 @@ pub fn gen_signature<R: CryptoRng + RngCore>(
     region_name: &str,
     method: &str,
     uri: &str,
+    nonce: u64,
     field_vals: BTreeMap<&str, &str>,
     rng: &mut R,
 ) -> Vec<u8> {
     let signing_key = BlindedSigningKey::<Sha256>::new(sk.0.clone());
-    let data = build_sign_data(region_name, method, uri, field_vals);
+    let data = build_sign_data(region_name, method, uri, nonce, field_vals);
     let signature = signing_key.sign_with_rng(rng, &data);
     signature.as_bytes().to_vec()
 }
@@ -33,11 +34,12 @@ pub fn verify_signature(
     region_name: &str,
     method: &str,
     uri: &str,
+    nonce: u64,
     field_vals: BTreeMap<&str, &str>,
     signature: &[u8],
 ) -> Result<bool, SignError> {
     let vk = VerifyingKey::<Sha256>::new(pk.0.clone());
-    let data = build_sign_data(region_name, method, uri, field_vals);
+    let data = build_sign_data(region_name, method, uri, nonce, field_vals);
     let signature = pss::Signature::from_bytes(signature)
         .map_err(|_| SignError::SignatureBytesDecodingError)?;
     let verified = vk.verify(&data, &signature);
@@ -48,11 +50,13 @@ fn build_sign_data(
     region_name: &str,
     method: &str,
     uri: &str,
+    nonce: u64,
     field_vals: BTreeMap<&str, &str>,
 ) -> Vec<u8> {
     let mut data = region_name.as_bytes().to_vec();
     data.append(&mut method.as_bytes().to_vec());
     data.append(&mut uri.as_bytes().to_vec());
+    data.append(&mut nonce.to_be_bytes().to_vec());
     for (field, val) in field_vals.into_iter() {
         let concated = format!("{}:{},", field, val);
         data.append(&mut concated.as_bytes().to_vec());
