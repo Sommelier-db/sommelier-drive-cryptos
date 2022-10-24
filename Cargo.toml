@@ -2,6 +2,7 @@
 name = "sommelier-drive-cryptos"
 version = "0.1.0"
 edition = "2021"
+authors = ["Sora Suegami"]
 
 [dependencies]
 rsa = {version = "0.7.0", default-features = false, features = ["std", "pem", "serde"]}
