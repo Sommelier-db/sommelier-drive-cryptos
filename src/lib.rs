@@ -235,7 +235,7 @@ pub fn encrypt_new_file_with_shared_key(
     Ok(contents_ct)
 }
 
-pub fn add_read_permission(
+pub fn gen_read_permission_ct(
     pk: &PkePublicKey,
     recovered_shared_key: &RecoveredSharedKey,
     filepath: &str,
@@ -248,6 +248,13 @@ pub fn add_read_permission(
         filepath_ct,
     };
     Ok(shared_key_ct)
+}
+
+pub fn gen_authorization_seed() -> AuthorizationSeed {
+    let mut rng = OsRng;
+    let mut authorization_seed = [0; 32];
+    rng.fill_bytes(&mut authorization_seed);
+    authorization_seed
 }
 
 pub fn encrypt_authorization_seed(
@@ -353,7 +360,8 @@ mod test {
 
         let new_sk = pke_gen_secret_key(&mut rng).unwrap();
         let new_pk = pke_gen_public_key(&new_sk);
-        let new_permission = add_read_permission(&new_pk, &recovered_shared_key, filepath).unwrap();
+        let new_permission =
+            gen_read_permission_ct(&new_pk, &recovered_shared_key, filepath).unwrap();
         let recovered_shared_key =
             recover_shared_key(&new_sk, &new_permission.shared_key_ct).unwrap();
         let contents = decrypt_contents_ct(&recovered_shared_key, &ct.contents_ct).unwrap();
@@ -368,8 +376,7 @@ mod test {
         let sk = pke_gen_secret_key(&mut rng).unwrap();
         let pk = pke_gen_public_key(&sk);
 
-        let mut authorization_seed = [0; 32];
-        rng.fill_bytes(&mut authorization_seed);
+        let authorization_seed = gen_authorization_seed();
         let derived_sk = pke_derive_secret_key_from_seeed(authorization_seed.clone()).unwrap();
         let ct = encrypt_authorization_seed(&pk, authorization_seed.clone()).unwrap();
         let recovered_seed = decrypt_authorization_seed_ct(&sk, &ct).unwrap();
