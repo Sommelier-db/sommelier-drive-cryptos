@@ -219,21 +219,21 @@ impl Default for CAuthorizationSeedCT {
     }
 }
 
-impl TryFrom<Vec<u8>> for CAuthorizationSeedCT {
+impl TryFrom<AuthorizationSeedCT> for CAuthorizationSeedCT {
     type Error = SommelierDriveCryptoError;
-    fn try_from(value: Vec<u8>) -> Result<Self, Self::Error> {
+    fn try_from(value: AuthorizationSeedCT) -> Result<Self, Self::Error> {
         Ok(Self {
-            ptr: str2ptr(&hex::encode(&value)),
+            ptr: str2ptr(&hex::encode(&value.0)),
         })
     }
 }
 
-impl TryInto<Vec<u8>> for CAuthorizationSeedCT {
+impl TryInto<AuthorizationSeedCT> for CAuthorizationSeedCT {
     type Error = SommelierDriveCryptoError;
-    fn try_into(self) -> Result<Vec<u8>, Self::Error> {
+    fn try_into(self) -> Result<AuthorizationSeedCT, Self::Error> {
         let str = ptr2str(self.ptr);
         let vec = hex::decode(str)?;
-        Ok(vec)
+        Ok(AuthorizationSeedCT(vec))
     }
 }
 
@@ -525,7 +525,7 @@ fn_str_pointer!(
 );
 
 fn_permission_ct_pointer!(
-    fn addPermission(
+    fn genReadPermissionCT(
         pk: *mut c_char,
         recovered_shared_key: CRecoveredSharedKey,
         filepath: *mut c_char,
@@ -533,10 +533,70 @@ fn_permission_ct_pointer!(
         let pk = PkePublicKey::from_str(ptr2str(pk))?;
         let recovered_shared_key = recovered_shared_key.try_into()?;
         let filepath = ptr2str(filepath);
-        let permission_ct = add_read_permission(&pk, &recovered_shared_key, filepath)?;
+        let permission_ct = gen_read_permission_ct(&pk, &recovered_shared_key, filepath)?;
         Ok(permission_ct.try_into()?)
     }
 );
+
+fn_str_pointer!(
+    fn genAuthorizationSeed() -> Result<*mut c_char, SommelierDriveCryptoError> {
+        let seed = gen_authorization_seed();
+        let ptr = str2ptr(&hex::encode(seed));
+        Ok(ptr)
+    }
+);
+
+easy_ffi!(fn_authorization_seed_ct =>
+    |err| {
+        set_errno(Errno(EINVAL));
+        return CAuthorizationSeedCT::default();
+    }
+    |panic_val| {
+        set_errno(Errno(EINVAL));
+        match panic_val.downcast_ref::<&'static str>() {
+            Some(s) => panic!("sommelier-drive-cryptos-panic: {}",s),
+            None => panic!("sommelier-drive-cryptos-panic without an error message"),
+        }
+    }
+);
+
+fn_authorization_seed_ct!(
+    fn encryptAuthorizationSeed(
+        pk: *mut c_char,
+        authorization_seed: *mut c_char,
+    ) -> Result<CAuthorizationSeedCT, SommelierDriveCryptoError> {
+        let pk = PkePublicKey::from_str(ptr2str(pk))?;
+        let authorization_seed = hex::decode(ptr2str(authorization_seed))?;
+        let len = authorization_seed.len();
+        let authorization_seed: AuthorizationSeed = authorization_seed
+            .try_into()
+            .map_err(|_| SommelierDriveCryptoError::InvalidAuthorizationSeedLength(len))?;
+        let ct = encrypt_authorization_seed(&pk, authorization_seed)?;
+        let ct = ct.try_into()?;
+        Ok(ct)
+    }
+);
+
+fn_str_pointer!(
+    fn decryptAuthorizationSeedCT(
+        sk: *mut c_char,
+        authorization_seed_ct: CAuthorizationSeedCT,
+    ) -> Result<*mut c_char, SommelierDriveCryptoError> {
+        let sk = PkeSecretKey::from_str(ptr2str(sk))?;
+        let authorization_seed_ct: AuthorizationSeedCT = authorization_seed_ct.try_into()?;
+        let authorization_seed = decrypt_authorization_seed_ct(&sk, &authorization_seed_ct)?;
+        let ptr = str2ptr(&hex::encode(&authorization_seed));
+        Ok(ptr)
+    }
+);
+
+pub fn decrypt_authorization_seed_ct(
+    sk: &PkeSecretKey,
+    authorization_seed_ct: &AuthorizationSeedCT,
+) -> Result<AuthorizationSeed, SommelierDriveCryptoError> {
+    let authorization_seed = pke_decrypt(sk, &authorization_seed_ct.0)?;
+    Ok(authorization_seed.try_into().unwrap())
+}
 
 easy_ffi!(fn_filepath_ct_pointer =>
     |err| {
@@ -677,7 +737,7 @@ mod test {
         let new_sk = pkeGenSecretKey();
         let new_pk = pkeGenPublicKey(new_sk);
         let new_permission_ct =
-            addPermission(new_pk, recovered_shared_key, filepath.clone().into_raw());
+            genReadPermissionCT(new_pk, recovered_shared_key, filepath.clone().into_raw());
         let recovered_shared_key = recoverSharedKey(new_sk, new_permission_ct.shared_key_ct);
         let contents = decryptContentsCT(recovered_shared_key, ct.contents_ct);
         let contents_bytes = unsafe { slice::from_raw_parts(contents.ptr, contents.len) };

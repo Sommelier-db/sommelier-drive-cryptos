@@ -7,28 +7,27 @@
 #include <stdlib.h>
 
 
-typedef struct CSharedKeyCT {
+typedef struct CAuthorizationSeedCT {
   char *ptr;
-} CSharedKeyCT;
+} CAuthorizationSeedCT;
 
-typedef struct CFilePathCT {
-  char *ptr;
-} CFilePathCT;
-
-typedef struct CPermissionCT {
-  struct CSharedKeyCT shared_key_ct;
-  struct CFilePathCT filepath_ct;
-} CPermissionCT;
+typedef struct CContentsBytes {
+  const uint8_t *ptr;
+  size_t len;
+} CContentsBytes;
 
 typedef struct CRecoveredSharedKey {
   char *shared_key;
   char *shared_key_hash;
 } CRecoveredSharedKey;
 
-typedef struct CContentsBytes {
-  const uint8_t *ptr;
-  size_t len;
-} CContentsBytes;
+typedef struct CFilePathCT {
+  char *ptr;
+} CFilePathCT;
+
+typedef struct CSharedKeyCT {
+  char *ptr;
+} CSharedKeyCT;
 
 typedef struct CFileCT {
   size_t num_cts;
@@ -38,25 +37,36 @@ typedef struct CFileCT {
   char *contents_ct;
 } CFileCT;
 
-struct CPermissionCT addPermission(char *pk,
-                                   struct CRecoveredSharedKey recovered_shared_key,
-                                   char *filepath);
+typedef struct CReadPermissionCT {
+  struct CSharedKeyCT shared_key_ct;
+  struct CFilePathCT filepath_ct;
+} CReadPermissionCT;
+
+char *computePermissionHash(unsigned int user_id, char *parent_filepath);
+
+char *decryptAuthorizationSeedCT(char *sk, struct CAuthorizationSeedCT authorization_seed_ct);
 
 struct CContentsBytes decryptContentsCT(struct CRecoveredSharedKey shared_key, char *ct);
 
-char *decryptFilepath(char *sk, struct CFilePathCT ct);
+char *decryptFilepathCT(char *sk, struct CFilePathCT ct);
+
+struct CAuthorizationSeedCT encryptAuthorizationSeed(char *pk, char *authorization_seed);
 
 struct CFilePathCT encryptFilepath(char *pk, char *filepath);
 
 struct CFileCT encryptNewFile(char **pks,
                               size_t num_pk,
                               char *filepath,
-                              const uint8_t *contents_bytes,
-                              size_t contents_bytes_size);
+                              struct CContentsBytes contents);
 
 char *encryptNewFileWithSharedKey(struct CRecoveredSharedKey recovered_shared_key,
-                                  uint8_t *contents_bytes,
-                                  size_t contents_bytes_size);
+                                  struct CContentsBytes contents);
+
+char *genAuthorizationSeed(void);
+
+struct CReadPermissionCT genReadPermissionCT(char *pk,
+                                             struct CRecoveredSharedKey recovered_shared_key,
+                                             char *filepath);
 
 char *pkeGenPublicKey(char *sk);
 
@@ -66,6 +76,7 @@ char *pkeGenSignature(char *sk,
                       char *region_name,
                       char *method,
                       char *uri,
+                      int nonce,
                       char **fields,
                       char **vals,
                       size_t num_field);
@@ -76,6 +87,7 @@ int verifySignature(char *pk,
                     char *region_name,
                     char *method,
                     char *uri,
+                    int nonce,
                     char **fields,
                     char **vals,
                     size_t num_field,

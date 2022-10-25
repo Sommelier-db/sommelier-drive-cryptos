@@ -1,5 +1,5 @@
-/*#[cfg(feature = "c_api")]
-mod c_api;*/
+#[cfg(feature = "c_api")]
+mod c_api;
 
 mod pk_signature;
 mod pke;
@@ -9,8 +9,8 @@ use std::string::FromUtf8Error;
 
 use aes_gcm::aead::OsRng;
 
-/*#[cfg(feature = "c_api")]
-pub use c_api::*;*/
+#[cfg(feature = "c_api")]
+pub use c_api::*;
 
 pub use pk_signature::*;
 pub use pke::*;
@@ -32,6 +32,8 @@ use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum SommelierDriveCryptoError {
+    #[error("Invalid authorization seed length: given `{0}`, expected: 32.")]
+    InvalidAuthorizationSeedLength(usize),
     #[error(transparent)]
     SkeError(#[from] SkeError),
     #[error(transparent)]
