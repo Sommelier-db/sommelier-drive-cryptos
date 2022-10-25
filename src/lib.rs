@@ -182,13 +182,26 @@ pub fn encrypt_new_file(
     filepath: &str,
     contents_bytes: &[u8],
 ) -> Result<FileCT, SommelierDriveCryptoError> {
+    let (filepath_cts, shared_key_cts, recovered_shared_key) =
+        encrypt_new_path_for_multi_pks(pks, filepath)?;
+    let contents_ct = encrypt_new_file_with_shared_key(&recovered_shared_key, contents_bytes)?;
+    let shared_key_hash = recovered_shared_key.shared_key_hash;
+
+    Ok(FileCT {
+        shared_key_cts,
+        filepath_cts,
+        shared_key_hash,
+        contents_ct,
+    })
+}
+
+pub fn encrypt_new_path_for_multi_pks(
+    pks: &[PkePublicKey],
+    filepath: &str,
+) -> Result<(Vec<FilePathCT>, Vec<Vec<u8>>, RecoveredSharedKey), SommelierDriveCryptoError> {
     let mut rng = OsRng;
     let shared_key = ske_gen_key(&mut rng);
-    let mut nonce = [0; NONCE_BYTES_SIZE];
-    rng.fill_bytes(&mut nonce);
-    let contents_ct = ske_encrypt(&shared_key, &nonce, contents_bytes)?;
     let shared_key_hash = HashDigest::from_bytes(&Sha256::digest(&shared_key.0));
-
     let mut shared_key_cts = Vec::new();
     let mut filepath_cts = Vec::new();
     for pk in pks.into_iter() {
@@ -197,12 +210,11 @@ pub fn encrypt_new_file(
         shared_key_cts.push(shared_key_ct);
         filepath_cts.push(filepath_ct);
     }
-    Ok(FileCT {
-        shared_key_cts,
-        filepath_cts,
+    let recovered_shared_key = RecoveredSharedKey {
+        shared_key,
         shared_key_hash,
-        contents_ct,
-    })
+    };
+    Ok((filepath_cts, shared_key_cts, recovered_shared_key))
 }
 
 pub fn recover_shared_key(
@@ -442,7 +454,6 @@ mod test {
         let filepath = "a".to_string().repeat(64);
         let text = [1; 1048576 * 2];
         let ct = encrypt_new_file(&pks, &filepath, &text).unwrap();
-
         let recovered_shared_key = recover_shared_key(&sks[0], &ct.shared_key_cts[0]).unwrap();
         let contents = decrypt_contents_ct(&recovered_shared_key, &ct.contents_ct).unwrap();
         assert_eq!(text.to_vec(), contents);
